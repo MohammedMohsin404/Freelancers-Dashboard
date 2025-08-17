@@ -116,7 +116,7 @@ export default function ChartsSection() {
   ];
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 mt-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
       {chartCards.map((card, index) => (
         <motion.div
           key={card.title}
@@ -126,7 +126,7 @@ export default function ChartsSection() {
           viewport={{ once: true, amount: 0.2 }}
           whileHover={{ scale: 1.02 }}
           className={`card bg-base-100 shadow-md rounded-2xl ${
-            card.fullWidth ? "md:col-span-2" : ""
+            card.fullWidth ? "sm:col-span-2" : ""
           }`}
         >
           <div className="card-body">
