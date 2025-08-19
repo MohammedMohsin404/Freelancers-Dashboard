@@ -1,16 +1,20 @@
 // app/layout.tsx
+"use client"
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
+import { SessionProvider } from "next-auth/react";
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  
   return (
     <html lang="en" suppressHydrationWarning>
+ <SessionProvider>
       <body>
         <ThemeProvider attribute="class" defaultTheme="light">
           <div className="flex h-screen">
@@ -24,6 +28,7 @@ export default function RootLayout({
           </div>
         </ThemeProvider>
       </body>
+      </SessionProvider>
     </html>
   );
 }

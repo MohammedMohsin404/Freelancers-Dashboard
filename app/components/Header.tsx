@@ -1,12 +1,15 @@
 "use client";
 
-import { useTheme } from "next-themes";
-import { Bell, User } from "lucide-react";
+
+import { Bell } from "lucide-react";
 import { useState } from "react";
 import ThemeToggle from "./ThemeToggle";
+import Link from "next/link";
+import { useSession, signOut } from "next-auth/react";
 
 export default function Header() {
-  const { theme, setTheme } = useTheme();
+  const { data: session } = useSession();
+
   const [notifications] = useState([
     { id: 1, text: "New project assigned", time: "2m ago" },
     { id: 2, text: "Invoice #123 paid", time: "1h ago" },
@@ -17,26 +20,22 @@ export default function Header() {
     <header className="h-14 sm:h-16 lg:h-18 bg-base-100 border-b border-base-300 flex items-center justify-between px-3 sm:px-4 lg:px-6 shadow-sm">
       {/* Left: Logo / Brand */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        {/* Brand Text */}
         <div>
-          {/* Mobile */}
           <span className="font-bold text-base text-base-content sm:hidden">
-            Dashboard
+            Freelancers Dashboard
           </span>
-          {/* Tablet */}
           <span className="hidden sm:block md:hidden font-bold text-lg text-base-content">
-            Freelancer
+            Freelancers Dashboard
           </span>
-          {/* Desktop */}
           <span className="hidden md:block font-bold text-lg text-base-content">
-            Freelancer Dashboard
+            Freelancers Dashboard
           </span>
         </div>
       </div>
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2">
-        {/* Theme Toggle (Visible on all sizes) */}
+        {/* Theme Toggle */}
         <ThemeToggle />
 
         {/* Notifications */}
@@ -71,19 +70,36 @@ export default function Header() {
 
         {/* User Avatar Dropdown */}
         <div className="dropdown dropdown-end">
-          <label tabIndex={0} className="btn btn-ghost btn-circle btn-sm sm:btn-md p-1.5">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary/20 flex items-center justify-center">
-              <User size={16} className="text-primary" />
-            </div>
+          <label tabIndex={0} className="btn btn-ghost btn-circle btn-sm sm:btn-md p-1.5 flex items-center gap-2">
+            {session?.user?.image ? (
+              <img
+                src={session.user.image}
+                alt={session.user.name || "User"}
+                className="w-8 h-8 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                <span className="text-primary font-bold">U</span>
+              </div>
+            )}
+            
           </label>
           <ul
             tabIndex={0}
             className="dropdown-content menu bg-base-100 rounded-box shadow-lg border border-base-300 w-44 sm:w-48 mt-2 p-2 z-50"
           >
-            <li><a>Profile</a></li>
-            <li><a>Settings</a></li>
+            {session?.user?.name && <span className="hidden sm:inline text-sm font-medium"> <li>{session.user.name}</li></span>}
+           
+            <Link href="/settings"><li>Settings</li></Link>
             <div className="divider my-1"></div>
-            <li><a className="text-error">Logout</a></li>
+            <li>
+              <button
+                className="text-error w-full text-left"
+                onClick={() => signOut({ callbackUrl: "/auth/login" })}
+              >
+                Logout
+              </button>
+            </li>
           </ul>
         </div>
       </div>

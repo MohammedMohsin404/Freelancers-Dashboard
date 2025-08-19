@@ -14,7 +14,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const menuItems = [
-  { name: "Dashboard", icon: LayoutDashboard, href: "/" },
+  { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
   { name: "Projects", icon: FolderKanban, href: "/projects" },
   { name: "Invoices", icon: FileText, href: "/invoices" },
   { name: "Clients", icon: Users, href: "/clients" },
