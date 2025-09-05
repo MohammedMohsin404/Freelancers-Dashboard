@@ -645,10 +645,10 @@ d3-timer@^3.0.1:
   resolved "https://registry.yarnpkg.com/d3-timer/-/d3-timer-3.0.1.tgz#6284d2a2708285b1abb7e201eda4380af35e63b0"
   integrity sha512-ndfJ/JxxMd3nw31uyKoY2naivF+r29V+Lc0svZxe1JvvIRmi8hUsrMvdOwgS1o6uBHmiz91geQ0ylPP0aj1VUA==
 
-daisyui@^5.0.50:
-  version "5.0.50"
-  resolved "https://registry.yarnpkg.com/daisyui/-/daisyui-5.0.50.tgz#764da931c9cdad22114e054c8af6d410326cc226"
-  integrity sha512-c1PweK5RI1C76q58FKvbS4jzgyNJSP6CGTQ+KkZYzADdJoERnOxFoeLfDHmQgxLpjEzlYhFMXCeodQNLCC9bow==
+daisyui@^5.1.7:
+  version "5.1.7"
+  resolved "https://registry.yarnpkg.com/daisyui/-/daisyui-5.1.7.tgz#d03574d272d38e1c143f7bf423acd691188e5932"
+  integrity sha512-XjP2N22lQjFdpH6C1dqCXI+O3stt6ELe8aRtRC/7iKtbRCGZRhgz2YlzPfTiDFm8QH8nEcI/i1MgwY8Im0Ii5A==
 
 decimal.js-light@^2.5.1:
   version "2.5.1"

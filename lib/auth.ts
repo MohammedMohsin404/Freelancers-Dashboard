@@ -1,11 +1,22 @@
+// lib/auth.ts
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth-options";
 
-export async function requireAuth(req: Request) {
+/**
+ * Require an authenticated session on the server.
+ * Throws if no session; return value is the session object when present.
+ */
+export async function requireAuth() {
   const session = await getServerSession(authOptions);
   if (!session) {
-    // redirect to login if no session
-    return { redirect: "/auth/login" };
+    throw new Error("Unauthorized");
   }
-  return { session };
+  return session;
+}
+
+/**
+ * Get session (nullable) on the server.
+ */
+export async function getSession() {
+  return getServerSession(authOptions);
 }

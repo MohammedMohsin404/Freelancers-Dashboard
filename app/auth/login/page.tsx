@@ -1,10 +1,14 @@
 "use client";
 
+import { Suspense } from "react";
 import { signIn } from "next-auth/react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+// Ensure this client page isn't prerendered
+export const dynamic = "force-dynamic";
+
+function LoginContent() {
   const sp = useSearchParams();
   const callbackUrl = sp.get("callbackUrl") || "/dashboard";
 
@@ -43,5 +47,19 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center text-sm text-gray-500">
+          Loading…
+        </div>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }
