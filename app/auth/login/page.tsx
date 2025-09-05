@@ -2,8 +2,12 @@
 
 import { signIn } from "next-auth/react";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
+  const sp = useSearchParams();
+  const callbackUrl = sp.get("callbackUrl") || "/dashboard";
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50">
       <div className="w-full max-w-sm p-10 bg-white rounded-2xl shadow-xl flex flex-col items-center gap-6">
@@ -26,7 +30,7 @@ export default function LoginPage() {
         {/* Sign In Button */}
         <button
           className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 rounded-lg shadow-sm bg-white hover:bg-gray-50 transition-colors text-gray-700 font-medium"
-          onClick={() => signIn("google")}
+          onClick={() => signIn("google", { callbackUrl })}
         >
           <Image src="/G_logo.svg" alt="Google Logo" width={20} height={20} />
           Sign in with Google
@@ -34,7 +38,8 @@ export default function LoginPage() {
 
         {/* Footer / Note */}
         <p className="text-xs text-gray-400 text-center">
-          By signing in, you agree to our <span className="text-indigo-600">Terms & Conditions</span>.
+          By signing in, you agree to our{" "}
+          <span className="text-indigo-600">Terms &amp; Conditions</span>.
         </p>
       </div>
     </div>
