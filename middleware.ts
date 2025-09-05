@@ -1,4 +1,3 @@
-// middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
@@ -6,9 +5,8 @@ import { getToken } from "next-auth/jwt";
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Always allow NextAuth API + static assets
   if (
-    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/auth") ||      // ← always allow NextAuth APIs
     pathname.startsWith("/_next") ||
     pathname.startsWith("/assets") ||
     pathname === "/favicon.ico" ||
@@ -17,12 +15,10 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow the custom login page itself
   if (pathname.startsWith("/auth/login")) {
     return NextResponse.next();
   }
 
-  // Check JWT (edge-safe)
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   if (!token) {
     const url = new URL("/auth/login", req.url);

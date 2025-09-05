@@ -18,7 +18,7 @@ function LoginContent() {
         {/* Logo / Branding */}
         <div className="flex items-center gap-2">
           <Image src="/logo.png" alt="Logo" width={40} height={40} />
-          <h1 className="text-3xl font-extrabold text-indigo-700">MyApp</h1>
+          <h1 className="text-3xl font-extrabold text-indigo-700">Freelancers Dashboard</h1>
         </div>
 
         {/* Title */}

@@ -2,7 +2,7 @@
 import type { AuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { MongoDBAdapter } from "@next-auth/mongodb-adapter";
-import clientPromise from "@/lib/mongodb";
+import getMongoClientPromise from "@/lib/mongodb";
 
 export const authOptions: AuthOptions = {
   providers: [
@@ -11,14 +11,15 @@ export const authOptions: AuthOptions = {
       clientSecret: process.env.AUTH_GOOGLE_SECRET!,
     }),
   ],
-  adapter: MongoDBAdapter(clientPromise),
+  // ⬇️ Call the function so you pass a Promise<MongoClient>, not the function itself
+  adapter: MongoDBAdapter(getMongoClientPromise()),
   session: { strategy: "jwt" },
   pages: { signIn: "/auth/login" },
   secret: process.env.NEXTAUTH_SECRET,
   callbacks: {
     async signIn({ user }) {
       try {
-        const client = await clientPromise;
+        const client = await getMongoClientPromise();
         const db = client.db("freelancers-dashboard");
         const usersCollection = db.collection("users");
         await usersCollection.updateOne(

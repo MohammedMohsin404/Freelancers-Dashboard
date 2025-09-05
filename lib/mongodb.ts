@@ -1,24 +1,28 @@
+// lib/mongodb.ts
 import { MongoClient } from "mongodb";
 
-if (!process.env.MONGODB_URI) {
-  throw new Error("Please define the MONGODB_URI environment variable");
-}
+let _clientPromise: Promise<MongoClient> | null = null;
 
-const uri = process.env.MONGODB_URI;
-let client: MongoClient;
-let clientPromise: Promise<MongoClient>;
+export default function getMongoClientPromise(): Promise<MongoClient> {
+  if (_clientPromise) return _clientPromise;
 
-if (process.env.NODE_ENV === "development") {
-  // Use global variable to prevent multiple connections in dev
-  if (!(global as any)._mongoClientPromise) {
-    client = new MongoClient(uri);
-    (global as any)._mongoClientPromise = client.connect();
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error(
+      "MONGODB_URI is not set (check Vercel Project → Settings → Environment Variables)."
+    );
   }
-  clientPromise = (global as any)._mongoClientPromise;
-} else {
-  // In production, just create new client
-  client = new MongoClient(uri);
-  clientPromise = client.connect();
-}
 
-export default clientPromise;
+  const client = new MongoClient(uri);
+
+  if (process.env.NODE_ENV === "development") {
+    // @ts-expect-error allow global caching in dev
+    global._mongoClientPromise = global._mongoClientPromise || client.connect();
+    // @ts-expect-error read cached promise
+    _clientPromise = global._mongoClientPromise as Promise<MongoClient>;
+  } else {
+    _clientPromise = client.connect();
+  }
+
+  return _clientPromise;
+}
