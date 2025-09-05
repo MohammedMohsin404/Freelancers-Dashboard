@@ -16,7 +16,7 @@ export default function getMongoClientPromise(): Promise<MongoClient> {
   const client = new MongoClient(uri);
 
   if (process.env.NODE_ENV === "development") {
-    // @ts-expect-error allow global caching in dev
+    // @ts-expect-error dev global cache
     global._mongoClientPromise = global._mongoClientPromise || client.connect();
     // @ts-expect-error read cached promise
     _clientPromise = global._mongoClientPromise as Promise<MongoClient>;
