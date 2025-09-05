@@ -9,5 +9,6 @@ export async function GET() {
     AUTH_GOOGLE_ID: !!process.env.AUTH_GOOGLE_ID,
     AUTH_GOOGLE_SECRET: !!process.env.AUTH_GOOGLE_SECRET,
     MONGODB_URI: !!process.env.MONGODB_URI,
+    VERCEL_ENV: process.env.VERCEL_ENV || null,
   });
 }
