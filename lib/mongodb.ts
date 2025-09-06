@@ -1,28 +1,38 @@
-// lib/mongodb.ts
+// /lib/mongodb.ts
 import { MongoClient } from "mongodb";
 
-let _clientPromise: Promise<MongoClient> | null = null;
+const uri = process.env.MONGODB_URI;
+if (!uri) {
+  throw new Error(
+    "MONGODB_URI is not set (check Vercel Project → Settings → Environment Variables)."
+  );
+}
 
-export default function getMongoClientPromise(): Promise<MongoClient> {
-  if (_clientPromise) return _clientPromise;
+// Reuse the client across hot reloads in dev
+declare global {
+  // eslint-disable-next-line no-var
+  var _mongoClientPromise: Promise<MongoClient> | undefined;
+}
 
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    throw new Error(
-      "MONGODB_URI is not set (check Vercel Project → Settings → Environment Variables)."
-    );
+let client: MongoClient;
+let clientPromise: Promise<MongoClient>;
+
+if (process.env.NODE_ENV === "development") {
+  if (!global._mongoClientPromise) {
+    client = new MongoClient(uri);
+    global._mongoClientPromise = client.connect();
   }
+  clientPromise = global._mongoClientPromise;
+} else {
+  // In prod, always create a new client
+  client = new MongoClient(uri);
+  clientPromise = client.connect();
+}
 
-  const client = new MongoClient(uri);
+export default clientPromise;
 
-  if (process.env.NODE_ENV === "development") {
-    // @ts-expect-error dev global cache
-    global._mongoClientPromise = global._mongoClientPromise || client.connect();
-    // @ts-expect-error read cached promise
-    _clientPromise = global._mongoClientPromise as Promise<MongoClient>;
-  } else {
-    _clientPromise = client.connect();
-  }
-
-  return _clientPromise;
+// (Optional) helper if you want easy DB access elsewhere
+export async function getDb(name = process.env.MONGODB_DB || "freelancers-dashboard") {
+  const c = await clientPromise;
+  return c.db(name);
 }

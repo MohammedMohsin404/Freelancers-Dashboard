@@ -1,30 +1,26 @@
+// /app/components/ProjectsPage.tsx
 "use client";
-
-import { useState, useMemo, ChangeEvent } from "react";
+import { Dots, Spinner } from "@/app/components/Loader";
+import { SkeletonCard, SkeletonTableRow } from "@/app/components/Skeleton";
+import toast from "react-hot-toast";
+import { useState, useMemo, useEffect, ChangeEvent } from "react";
 import {
   Plus, Edit, Trash2, X, User, Calendar, FolderOpen,
 } from "lucide-react";
 import {
-  motion,
-  AnimatePresence,
-  useReducedMotion,
-  Variants,
+  motion, AnimatePresence, useReducedMotion, Variants,
 } from "framer-motion";
+import { HttpError, safeFetchJSON, jsonBody } from "@/lib/http";
 
 interface Project {
-  id: number;
+  id: string;
   name: string;
   client: string;
   status: "Pending" | "In Progress" | "Completed";
-  deadline: string; // ISO
+  deadline: string; // ISO from API
+  createdAt?: string;
+  updatedAt?: string;
 }
-
-// Seed data
-const initialProjects: Project[] = [
-  { id: 1, name: "Website Redesign", client: "Acme Corp",  status: "In Progress", deadline: "2025-08-31" },
-  { id: 2, name: "Mobile App",       client: "Beta LLC",   status: "Completed",   deadline: "2025-07-15" },
-  { id: 3, name: "Landing Page",     client: "Gamma Inc",  status: "Pending",     deadline: "2025-09-10" },
-];
 
 function statusPill(status: Project["status"]) {
   const base =
@@ -33,15 +29,18 @@ function statusPill(status: Project["status"]) {
   if (status === "In Progress") return `${base} bg-blue-100 text-blue-800`;
   return `${base} bg-green-100 text-green-800`;
 }
-
-function formatDate(iso: string) {
+function fmtDate(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.valueOf())) return iso;
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
 }
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [formData, setFormData] = useState<Omit<Project, "id">>({
     name: "",
@@ -49,10 +48,39 @@ export default function ProjectsPage() {
     status: "Pending",
     deadline: "",
   });
-  const [editId, setEditId] = useState<number | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"" | Project["status"]>("");
   const reduceMotion = useReducedMotion();
+
+  // Load list from API with toast on error
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        setLoading(true);
+        const data = await safeFetchJSON<Project[]>("/api/projects");
+        if (alive) {
+          setProjects(data);
+          if (process.env.NODE_ENV === "development") toast.success("Projects loaded");
+        }
+      } catch (e: any) {
+        const msg =
+          e instanceof HttpError
+            ? e.message || `Load failed (${e.status || "network"})`
+            : e?.message || "Failed to load projects";
+        if (alive) setError(msg);
+        toast.error(msg);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Derived list
   const filteredProjects = useMemo(() => {
@@ -63,17 +91,54 @@ export default function ProjectsPage() {
   }, [projects, search, filterStatus]);
 
   // Form handlers
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editId !== null) {
-      setProjects((prev) => prev.map((p) => (p.id === editId ? { ...p, ...formData, id: editId } : p)));
-    } else {
-      const newProject: Project = { ...formData, id: Date.now() };
-      setProjects((prev) => [newProject, ...prev]);
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+
+    try {
+      if (editId) {
+        await toast.promise(
+          (async () => {
+            const updated = await safeFetchJSON<Project>(
+              `/api/projects/${editId}`,
+              { method: "PUT", ...jsonBody(formData) }
+            );
+            setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+          })(),
+          {
+            loading: "Updating project…",
+            success: "Project updated",
+            error: (err) => (err instanceof HttpError ? err.message : "Update failed"),
+          }
+        );
+      } else {
+        await toast.promise(
+          (async () => {
+            const created = await safeFetchJSON<Project>(
+              "/api/projects",
+              { method: "POST", ...jsonBody(formData) }
+            );
+            setProjects((prev) => [created, ...prev]);
+          })(),
+          {
+            loading: "Creating project…",
+            success: "Project created",
+            error: (err) => (err instanceof HttpError ? err.message : "Create failed"),
+          }
+        );
+      }
+
+      setModalOpen(false);
+      setFormData({ name: "", client: "", status: "Pending", deadline: "" });
+      setEditId(null);
+    } catch (e: any) {
+      setError(e?.message || "Save failed");
+      // toast already shown by toast.promise
+    } finally {
+      setSaving(false);
     }
-    setModalOpen(false);
-    setFormData({ name: "", client: "", status: "Pending", deadline: "" });
-    setEditId(null);
   };
 
   const handleEdit = (project: Project) => {
@@ -82,78 +147,108 @@ export default function ProjectsPage() {
       name: project.name,
       client: project.client,
       status: project.status,
-      deadline: project.deadline,
+      deadline: project.deadline.slice(0, 10),
     });
     setModalOpen(true);
   };
 
-  const handleDelete = (id: number) => {
-    if (confirm("Are you sure you want to delete this project?")) {
-      setProjects((prev) => prev.filter((p) => p.id !== id));
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this project?")) return;
+
+    try {
+      await toast.promise(
+        (async () => {
+          await safeFetchJSON(`/api/projects/${id}`, { method: "DELETE" });
+          setProjects((prev) => prev.filter((p) => p.id !== id));
+        })(),
+        {
+          loading: "Deleting…",
+          success: "Project deleted",
+          error: (err) => (err instanceof HttpError ? err.message : "Delete failed"),
+        }
+      );
+    } catch (e: any) {
+      setError(e?.message || "Delete failed");
     }
   };
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: name === "status" ? (value as Project["status"]) : value,
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value as any }));
   };
 
-  // Animation variants
+  // Animations
   const headerVariants: Variants = {
     hidden: { opacity: 0, y: reduceMotion ? 0 : 8 },
     show: { opacity: 1, y: 0, transition: { duration: 0.25 } },
   };
-
   const controlsVariants: Variants = {
     hidden: { opacity: 0, y: reduceMotion ? 0 : 6 },
     show: { opacity: 1, y: 0, transition: { duration: 0.2, delay: 0.05 } },
   };
-
   const listVariants: Variants = {
     hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: reduceMotion ? {} : { staggerChildren: 0.06, delayChildren: 0.06 },
-    },
+    show: { opacity: 1, transition: reduceMotion ? {} : { staggerChildren: 0.06, delayChildren: 0.06 } },
   };
-
   const itemVariants: Variants = {
     hidden: { opacity: 0, y: reduceMotion ? 0 : 10, scale: reduceMotion ? 1 : 0.98 },
     show:   { opacity: 1, y: 0, scale: 1, transition: { duration: 0.25 } },
     exit:   { opacity: 0, y: reduceMotion ? 0 : -6, scale: reduceMotion ? 1 : 0.98, transition: { duration: 0.18 } },
   };
-
   const btnTap = { scale: reduceMotion ? 1 : 0.98 };
 
   return (
+    
     <div className="p-4 sm:p-6">
+
+  {/* Loading state */}
+      {loading && (
+        <>
+          {/* Mobile-first: card skeletons */}
+          <ul className="grid grid-cols-1 gap-3 sm:gap-4 md:hidden">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <li key={i}>
+                <SkeletonCard />
+              </li>
+            ))}
+          </ul>
+
+          {/* Desktop: table skeletons */}
+          <div className="hidden md:block overflow-x-auto bg-base-100 shadow-md rounded-lg mt-2">
+            <table className="min-w-full divide-y divide-base-300">
+              <thead className="bg-base-200">
+                <tr>
+                  <th className="px-4 py-2 text-left">Name</th>
+                  <th className="px-4 py-2 text-left">Client</th>
+                  <th className="px-4 py-2 text-left">Status</th>
+                  <th className="px-4 py-2 text-left">Deadline</th>
+                  <th className="px-4 py-2 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-base-300">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonTableRow key={i} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Subtle inline indicator (e.g. on top of page) */}
+          <div className="mt-3">
+            <Dots label="Loading projects" />
+          </div>
+        </>
+      )}
+
       {/* Header / CTA */}
-      <motion.div
-        className="mb-3 flex items-center gap-2"
-        variants={headerVariants}
-        initial="hidden"
-        animate="show"
-      >
+      <motion.div className="mb-3 flex items-center gap-2" variants={headerVariants} initial="hidden" animate="show">
         <FolderOpen className="size-5 text-primary" />
         <h2 className="text-base font-bold sm:text-lg md:text-xl">Projects</h2>
       </motion.div>
 
       {/* Controls */}
-      <motion.div
-        className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-        variants={controlsVariants}
-        initial="hidden"
-        animate="show"
-      >
-        <motion.button
-          whileTap={btnTap}
-          whileHover={reduceMotion ? undefined : { y: -1 }}
-          className="btn btn-primary flex items-center gap-2"
-          onClick={() => setModalOpen(true)}
-        >
+      <motion.div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" variants={controlsVariants} initial="hidden" animate="show">
+        <motion.button whileTap={btnTap} whileHover={reduceMotion ? undefined : { y: -1 }} className="btn btn-primary flex items-center gap-2" onClick={() => setModalOpen(true)}>
           <Plus size={16} /> Add Project
         </motion.button>
 
@@ -182,150 +277,130 @@ export default function ProjectsPage() {
         </div>
       </motion.div>
 
+      {/* Alerts */}
+      {error && (
+        <div className="alert alert-error mb-3">
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Loading state */}
+      {loading && (
+        <div className="flex items-center gap-2 text-base-content/70">
+          <span className="loading loading-spinner loading-sm" />
+          <span>Loading projects…</span>
+        </div>
+      )}
+
       {/* Mobile-first CARD grid (< md) */}
-      <motion.ul
-        variants={listVariants}
-        initial="hidden"
-        animate="show"
-        className="grid grid-cols-1 gap-3 sm:gap-4 md:hidden"
-      >
-        <AnimatePresence initial={false}>
-          {filteredProjects.map((p) => (
-            <motion.li key={p.id} variants={itemVariants} exit="exit">
-              <motion.article
-                whileHover={reduceMotion ? undefined : { y: -2 }}
-                transition={{ duration: 0.15 }}
-                className="relative rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm"
-              >
-                {/* Status */}
-                <div className="absolute right-3 top-3">
-                  <span className={statusPill(p.status)}>{p.status}</span>
-                </div>
+      {!loading && (
+        <motion.ul variants={listVariants} initial="hidden" animate="show" className="grid grid-cols-1 gap-3 sm:gap-4 md:hidden">
+          <AnimatePresence initial={false}>
+            {filteredProjects.map((p) => (
+              <motion.li key={p.id} variants={itemVariants} exit="exit">
+                <motion.article whileHover={reduceMotion ? undefined : { y: -2 }} transition={{ duration: 0.15 }} className="relative rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
+                  <div className="absolute right-3 top-3">
+                    <span className={statusPill(p.status)}>{p.status}</span>
+                  </div>
 
-                {/* Title */}
-                <header className="pr-24 mb-1 flex items-center gap-2">
-                  <FolderOpen className="size-4 text-base-content/70" />
-                  <h3 className="text-base font-semibold text-base-content">{p.name}</h3>
-                </header>
+                  <header className="pr-24 mb-1 flex items-center gap-2">
+                    <FolderOpen className="size-4 text-base-content/70" />
+                    <h3 className="text-base font-semibold text-base-content">{p.name}</h3>
+                  </header>
 
-                {/* Client */}
-                <div className="mt-1 flex items-center gap-2 text-sm text-base-content/70">
-                  <User className="size-4" />
-                  <span className="truncate">{p.client}</span>
-                </div>
+                  <div className="mt-1 flex items-center gap-2 text-sm text-base-content/70">
+                    <User className="size-4" />
+                    <span className="truncate">{p.client}</span>
+                  </div>
 
-                {/* Deadline */}
-                <div className="mt-1 flex items-center gap-2 text-sm text-base-content/70">
-                  <Calendar className="size-4" />
-                  <span>Deadline: {formatDate(p.deadline)}</span>
-                </div>
+                  <div className="mt-1 flex items-center gap-2 text-sm text-base-content/70">
+                    <Calendar className="size-4" />
+                    <span>Deadline: {fmtDate(p.deadline)}</span>
+                  </div>
 
-                {/* Actions */}
-                <div className="mt-3 flex gap-2">
-                  <motion.button
-                    whileTap={btnTap}
-                    className="btn btn-xs btn-outline"
-                    onClick={() => handleEdit(p)}
-                    aria-label="Edit"
-                  >
-                    <Edit size={14} />
-                    Edit
-                  </motion.button>
-                  <motion.button
-                    whileTap={btnTap}
-                    className="btn btn-xs btn-ghost text-error"
-                    onClick={() => handleDelete(p.id)}
-                    aria-label="Delete"
-                  >
-                    <Trash2 size={14} />
-                    Delete
-                  </motion.button>
-                </div>
-              </motion.article>
-            </motion.li>
-          ))}
-          {filteredProjects.length === 0 && (
-            <motion.li variants={itemVariants} className="text-center text-base-content/60 py-4">
-              No projects found.
-            </motion.li>
-          )}
-        </AnimatePresence>
-      </motion.ul>
+                  <div className="mt-3 flex gap-2">
+                    <motion.button whileTap={btnTap} className="btn btn-xs btn-outline" onClick={() => handleEdit(p)} aria-label="Edit">
+                      <Edit size={14} />
+                      Edit
+                    </motion.button>
+                    <motion.button whileTap={btnTap} className="btn btn-xs btn-ghost text-error" onClick={() => handleDelete(p.id)} aria-label="Delete">
+                      <Trash2 size={14} />
+                      Delete
+                    </motion.button>
+                  </div>
+                </motion.article>
+              </motion.li>
+            ))}
+            {filteredProjects.length === 0 && (
+              <motion.li variants={itemVariants} className="text-center text-base-content/60 py-4">
+                No projects found.
+              </motion.li>
+            )}
+          </AnimatePresence>
+        </motion.ul>
+      )}
 
       {/* Desktop TABLE (md+) */}
-      <div className="hidden md:block overflow-x-auto bg-base-100 shadow-md rounded-lg">
-        <table className="min-w-full divide-y divide-base-300">
-          <thead className="bg-base-200">
-            <tr>
-              <th className="px-4 py-2 text-left">Name</th>
-              <th className="px-4 py-2 text-left">Client</th>
-              <th className="px-4 py-2 text-left">Status</th>
-              <th className="px-4 py-2 text-left">Deadline</th>
-              <th className="px-4 py-2 text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-base-300">
-            <AnimatePresence initial={false}>
-              {filteredProjects.map((project) => (
-                <motion.tr
-                  key={project.id}
-                  variants={itemVariants}
-                  initial="hidden"
-                  animate="show"
-                  exit="exit"
-                  whileHover={reduceMotion ? undefined : { backgroundColor: "var(--fallback-b1,oklch(var(--b1)))" }}
-                  transition={{ duration: 0.15 }}
-                  className="hover:bg-base-100"
-                >
-                  <td className="px-4 py-2">{project.name}</td>
-                  <td className="px-4 py-2">{project.client}</td>
-                  <td className="px-4 py-2">
-                    <span className={statusPill(project.status)}>{project.status}</span>
-                  </td>
-                  <td className="px-4 py-2">{formatDate(project.deadline)}</td>
-                  <td className="px-4 py-2">
-                    <div className="flex justify-center gap-2">
-                      <motion.button
-                        whileTap={btnTap}
-                        className="btn btn-sm btn-ghost"
-                        onClick={() => handleEdit(project)}
-                        aria-label="Edit"
-                      >
-                        <Edit size={16} />
-                      </motion.button>
-                      <motion.button
-                        whileTap={btnTap}
-                        className="btn btn-sm btn-ghost text-error"
-                        onClick={() => handleDelete(project.id)}
-                        aria-label="Delete"
-                      >
-                        <Trash2 size={16} />
-                      </motion.button>
-                    </div>
-                  </td>
-                </motion.tr>
-              ))}
-              {filteredProjects.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="text-center py-4 text-base-content/60">
-                    No projects found.
-                  </td>
-                </tr>
-              )}
-            </AnimatePresence>
-          </tbody>
-        </table>
-      </div>
+      {!loading && (
+        <div className="hidden md:block overflow-x-auto bg-base-100 shadow-md rounded-lg">
+          <table className="min-w-full divide-y divide-base-300">
+            <thead className="bg-base-200">
+              <tr>
+                <th className="px-4 py-2 text-left">Name</th>
+                <th className="px-4 py-2 text-left">Client</th>
+                <th className="px-4 py-2 text-left">Status</th>
+                <th className="px-4 py-2 text-left">Deadline</th>
+                <th className="px-4 py-2 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-base-300">
+              <AnimatePresence initial={false}>
+                {filteredProjects.map((project) => (
+                  <motion.tr
+                    key={project.id}
+                    variants={itemVariants}
+                    initial="hidden"
+                    animate="show"
+                    exit="exit"
+                    whileHover={reduceMotion ? undefined : { backgroundColor: "var(--fallback-b1,oklch(var(--b1)))" }}
+                    transition={{ duration: 0.15 }}
+                    className="hover:bg-base-100"
+                  >
+                    <td className="px-4 py-2">{project.name}</td>
+                    <td className="px-4 py-2">{project.client}</td>
+                    <td className="px-4 py-2">
+                      <span className={statusPill(project.status)}>{project.status}</span>
+                    </td>
+                    <td className="px-4 py-2">{fmtDate(project.deadline)}</td>
+                    <td className="px-4 py-2">
+                      <div className="flex justify-center gap-2">
+                        <motion.button whileTap={btnTap} className="btn btn-sm btn-ghost" onClick={() => handleEdit(project)} aria-label="Edit">
+                          <Edit size={16} />
+                        </motion.button>
+                        <motion.button whileTap={btnTap} className="btn btn-sm btn-ghost text-error" onClick={() => handleDelete(project.id)} aria-label="Delete">
+                          <Trash2 size={16} />
+                        </motion.button>
+                      </div>
+                    </td>
+                  </motion.tr>
+                ))}
+                {filteredProjects.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="text-center py-4 text-base-content/60">
+                      No projects found.
+                    </td>
+                  </tr>
+                )}
+              </AnimatePresence>
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Modal */}
       <AnimatePresence>
         {modalOpen && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
+          <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <motion.div
               className="bg-base-100 rounded-xl w-full max-w-md p-6 relative shadow-xl"
               initial={reduceMotion ? { opacity: 1, scale: 1, y: 0 } : { opacity: 0, scale: 0.96, y: 8 }}
@@ -337,12 +412,9 @@ export default function ProjectsPage() {
               aria-label={editId ? "Edit Project" : "Add New Project"}
             >
               <motion.button
-                whileTap={btnTap}
+                whileTap={{ scale: reduceMotion ? 1 : 0.98 }}
                 className="absolute right-3 top-3 text-base-content/60 hover:text-base-content"
-                onClick={() => {
-                  setModalOpen(false);
-                  setEditId(null);
-                }}
+                onClick={() => { setModalOpen(false); setEditId(null); }}
                 aria-label="Close"
               >
                 <X size={20} />
@@ -351,56 +423,16 @@ export default function ProjectsPage() {
               <h2 className="text-lg font-bold mb-4">{editId ? "Edit Project" : "Add New Project"}</h2>
 
               <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-                <motion.input
-                  whileFocus={reduceMotion ? undefined : { scale: 1.01 }}
-                  transition={{ type: "spring", stiffness: 250, damping: 18, mass: 0.4 }}
-                  type="text"
-                  name="name"
-                  placeholder="Project Name"
-                  value={formData.name}
-                  required
-                  onChange={handleInputChange}
-                  className="input input-bordered w-full"
-                />
-                <motion.input
-                  whileFocus={reduceMotion ? undefined : { scale: 1.01 }}
-                  transition={{ type: "spring", stiffness: 250, damping: 18, mass: 0.4 }}
-                  type="text"
-                  name="client"
-                  placeholder="Client"
-                  value={formData.client}
-                  required
-                  onChange={handleInputChange}
-                  className="input input-bordered w-full"
-                />
-                <motion.select
-                  whileFocus={reduceMotion ? undefined : { scale: 1.01 }}
-                  transition={{ type: "spring", stiffness: 250, damping: 18, mass: 0.4 }}
-                  name="status"
-                  value={formData.status}
-                  onChange={handleInputChange}
-                  className="select select-bordered w-full"
-                >
+                <motion.input whileFocus={reduceMotion ? undefined : { scale: 1.01 }} transition={{ type: "spring", stiffness: 250, damping: 18, mass: 0.4 }} type="text" name="name" placeholder="Project Name" value={formData.name} required onChange={handleInputChange} className="input input-bordered w-full" />
+                <motion.input whileFocus={reduceMotion ? undefined : { scale: 1.01 }} transition={{ type: "spring", stiffness: 250, damping: 18, mass: 0.4 }} type="text" name="client" placeholder="Client" value={formData.client} required onChange={handleInputChange} className="input input-bordered w-full" />
+                <motion.select whileFocus={reduceMotion ? undefined : { scale: 1.01 }} transition={{ type: "spring", stiffness: 250, damping: 18, mass: 0.4 }} name="status" value={formData.status} onChange={handleInputChange} className="select select-bordered w-full">
                   <option>Pending</option>
                   <option>In Progress</option>
                   <option>Completed</option>
                 </motion.select>
-                <motion.input
-                  whileFocus={reduceMotion ? undefined : { scale: 1.01 }}
-                  transition={{ type: "spring", stiffness: 250, damping: 18, mass: 0.4 }}
-                  type="date"
-                  name="deadline"
-                  value={formData.deadline}
-                  required
-                  onChange={handleInputChange}
-                  className="input input-bordered w-full"
-                />
-                <motion.button
-                  whileTap={btnTap}
-                  className="btn btn-primary mt-2"
-                  type="submit"
-                >
-                  {editId ? "Update Project" : "Add Project"}
+                <motion.input whileFocus={reduceMotion ? undefined : { scale: 1.01 }} transition={{ type: "spring", stiffness: 250, damping: 18, mass: 0.4 }} type="date" name="deadline" value={formData.deadline} required onChange={handleInputChange} className="input input-bordered w-full" />
+                <motion.button whileTap={{ scale: reduceMotion ? 1 : 0.98 }} className="btn btn-primary mt-2" type="submit" disabled={saving}>
+                  {saving ? "Saving…" : editId ? "Update Project" : "Add Project"}
                 </motion.button>
               </form>
             </motion.div>
