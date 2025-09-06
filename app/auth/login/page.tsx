@@ -17,8 +17,8 @@ function LoginContent() {
       <div className="w-full max-w-sm p-10 bg-white rounded-2xl shadow-xl flex flex-col items-center gap-6">
         {/* Logo / Branding */}
         <div className="flex items-center gap-2">
-          <Image src="/logo.png" alt="Logo" width={40} height={40} />
-          <h1 className="text-3xl font-extrabold text-indigo-700">Freelancers Dashboard</h1>
+          <Image src="/logo.png" alt="Logo" width={30} height={30} />
+          <h1 className="text-xl text-center font-extrabold text-indigo-700">Freelancers Dashboard</h1>
         </div>
 
         {/* Title */}
