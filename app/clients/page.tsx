@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, ChangeEvent } from "react";
-import { Plus, Edit, Trash2, Users, Mail, Building2, Hash, X } from "lucide-react";
+import { Plus, Edit, Trash2, Users, Mail, Building2, Hash, X, DollarSign } from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion, Variants } from "framer-motion";
 import toast from "react-hot-toast";
 import Modal from "../components/Modal";
@@ -13,9 +13,15 @@ type Client = {
   name: string;
   email: string;
   company: string;
-  totalProjects: number;
   createdAt?: string;
   updatedAt?: string;
+};
+
+type ProjectLite = {
+  id: string;
+  client: string;     // display name
+  clientId?: string;  // optional from API
+  amount?: number;
 };
 
 function avatarInitials(name: string) {
@@ -27,8 +33,17 @@ function avatarInitials(name: string) {
     .toUpperCase();
 }
 
+function fmtMoney(value: number) {
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value ?? 0);
+  } catch {
+    return `$${(value ?? 0).toFixed(2)}`;
+  }
+}
+
 export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
+  const [projects, setProjects] = useState<ProjectLite[]>([]); // for totals
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,20 +54,31 @@ export default function ClientsPage() {
     name: "",
     email: "",
     company: "",
-    totalProjects: 0,
   });
 
   const [search, setSearch] = useState("");
   const reduceMotion = useReducedMotion();
 
-  // Load from API
+  // Load Clients + Projects for totals
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         setLoading(true);
-        const data = await safeFetchJSON<Client[]>("/api/clients");
-        if (alive) setClients(data);
+        const [cData, pData] = await Promise.all([
+          safeFetchJSON<Client[]>("/api/clients"),
+          safeFetchJSON<ProjectLite[]>("/api/projects"),
+        ]);
+        if (!alive) return;
+        setClients(cData);
+        setProjects(
+          pData.map(p => ({
+            id: p.id,
+            client: p.client,
+            clientId: p.clientId,
+            amount: p.amount ?? 0,
+          }))
+        );
       } catch (e: any) {
         const msg = e instanceof HttpError ? e.message : e?.message || "Failed to load clients";
         if (alive) setError(msg);
@@ -64,10 +90,32 @@ export default function ClientsPage() {
     return () => { alive = false; };
   }, []);
 
+  // Totals by clientId (preferred) or by name
+  const totalsByClient = useMemo(() => {
+    const map = new Map<string, { count: number; amount: number }>();
+
+    // build key set from client ids
+    clients.forEach(c => {
+      map.set(c.id, { count: 0, amount: 0 });
+    });
+
+    projects.forEach(p => {
+      // choose key
+      const byId = p.clientId && map.has(p.clientId);
+      const key = byId ? p.clientId! : clients.find(c => c.name === p.client)?.id;
+      if (!key) return;
+      const cur = map.get(key)!;
+      cur.count += 1;
+      cur.amount += p.amount ?? 0;
+    });
+
+    return map; // key: client.id
+  }, [clients, projects]);
+
   const filteredClients = useMemo(() => {
     const q = search.trim().toLowerCase();
     return clients.filter(
-      (c) =>
+      c =>
         c.name.toLowerCase().includes(q) ||
         c.email.toLowerCase().includes(q) ||
         c.company.toLowerCase().includes(q)
@@ -88,7 +136,7 @@ export default function ClientsPage() {
               `/api/clients/${editId}`,
               { method: "PUT", ...jsonBody(formData) }
             );
-            setClients((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+            setClients(prev => prev.map(c => (c.id === updated.id ? updated : c)));
           })(),
           { loading: "Updating client…", success: "Client updated", error: (err) => err?.message || "Update failed" }
         );
@@ -97,17 +145,17 @@ export default function ClientsPage() {
           (async () => {
             const created = await safeFetchJSON<Client>(
               "/api/clients",
-              { method: "POST", ...jsonBody(formData) }
+              { method: "POST", ...jsonBody({ ...formData /* no totals here */ }) }
             );
-            setClients((prev) => [created, ...prev]);
+            setClients(prev => [created, ...prev]);
           })(),
           { loading: "Creating client…", success: "Client created", error: (err) => err?.message || "Create failed" }
         );
       }
 
       setModalOpen(false);
-      setFormData({ name: "", email: "", company: "", totalProjects: 0 });
       setEditId(null);
+      setFormData({ name: "", email: "", company: "" });
     } catch (e: any) {
       setError(e?.message || "Save failed");
     } finally {
@@ -121,7 +169,6 @@ export default function ClientsPage() {
       name: client.name,
       email: client.email,
       company: client.company,
-      totalProjects: client.totalProjects,
     });
     setModalOpen(true);
   };
@@ -132,7 +179,7 @@ export default function ClientsPage() {
       await toast.promise(
         (async () => {
           await safeFetchJSON(`/api/clients/${id}`, { method: "DELETE" });
-          setClients((prev) => prev.filter((c) => c.id !== id));
+          setClients(prev => prev.filter(c => c.id !== id));
         })(),
         { loading: "Deleting…", success: "Client deleted", error: (err) => err?.message || "Delete failed" }
       );
@@ -143,10 +190,7 @@ export default function ClientsPage() {
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: name === "totalProjects" ? Number(value) : value,
-    }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   // Animations
@@ -162,16 +206,13 @@ export default function ClientsPage() {
 
   const listVariants: Variants = {
     hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: reduceMotion ? {} : { staggerChildren: 0.06, delayChildren: 0.06 },
-    },
+    show: { opacity: 1, transition: reduceMotion ? {} : { staggerChildren: 0.06, delayChildren: 0.06 } },
   };
 
   const itemVariants: Variants = {
     hidden: { opacity: 0, y: reduceMotion ? 0 : 10, scale: reduceMotion ? 1 : 0.98 },
-    show:   { opacity: 1, y: 0, scale: 1, transition: { duration: 0.25 } },
-    exit:   { opacity: 0, y: reduceMotion ? 0 : -6, scale: reduceMotion ? 1 : 0.98, transition: { duration: 0.18 } },
+    show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.25 } },
+    exit: { opacity: 0, y: reduceMotion ? 0 : -6, scale: reduceMotion ? 1 : 0.98, transition: { duration: 0.18 } },
   };
 
   const tap = { scale: reduceMotion ? 1 : 0.98 };
@@ -186,7 +227,11 @@ export default function ClientsPage() {
 
       {/* Controls */}
       <motion.div variants={controlsVariants} initial="hidden" animate="show" className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <motion.button whileTap={tap} whileHover={reduceMotion ? undefined : { y: -1 }} className="btn btn-primary flex items-center gap-2" onClick={() => setModalOpen(true)}>
+        <motion.button whileTap={tap} whileHover={reduceMotion ? undefined : { y: -1 }} className="btn btn-primary flex items-center gap-2" onClick={() => {
+          setEditId(null);
+          setFormData({ name: "", email: "", company: "" });
+          setModalOpen(true);
+        }}>
           <Plus size={16} /> Add Client
         </motion.button>
 
@@ -212,59 +257,68 @@ export default function ClientsPage() {
       {!loading && (
         <motion.ul variants={listVariants} initial="hidden" animate="show" className="grid grid-cols-1 gap-3 sm:gap-4 md:hidden">
           <AnimatePresence initial={false}>
-            {filteredClients.map((c) => (
-              <motion.li key={c.id} variants={itemVariants} exit="exit">
-                <motion.article whileHover={reduceMotion ? undefined : { y: -2 }} transition={{ duration: 0.15 }} className="relative rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-                  <div className="flex items-start gap-3">
-                    {/* Avatar */}
-                    <div
-                      className="
-                        inline-grid place-items-center
-                        w-10 h-10 rounded-full
-                        bg-primary/10 text-primary
-                        font-bold leading-none select-none
-                        text-[0.95rem] tracking-wide
-                      "
-                      aria-hidden="true"
-                    >
-                      {avatarInitials(c.name)}
+            {filteredClients.map((c) => {
+              const totals = totalsByClient.get(c.id) || { count: 0, amount: 0 };
+              return (
+                <motion.li key={c.id} variants={itemVariants} exit="exit">
+                  <motion.article whileHover={reduceMotion ? undefined : { y: -2 }} transition={{ duration: 0.15 }} className="relative rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      {/* Avatar */}
+                      <div
+                        className="
+                          inline-grid place-items-center
+                          w-10 h-10 rounded-full
+                          bg-primary/10 text-primary
+                          font-bold leading-none select-none
+                          text-[0.95rem] tracking-wide
+                        "
+                        aria-hidden="true"
+                      >
+                        {avatarInitials(c.name)}
+                      </div>
+
+                      {/* Main info */}
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-base font-semibold text-base-content truncate">{c.name}</h3>
+
+                        <div className="mt-1 flex items-center gap-2 text-sm text-base-content/70">
+                          <Mail className="size-4 shrink-0" />
+                          <span className="truncate">{c.email}</span>
+                        </div>
+
+                        <div className="mt-1 flex items-center gap-2 text-sm text-base-content/70">
+                          <Building2 className="size-4 shrink-0" />
+                          <span className="truncate">{c.company}</span>
+                        </div>
+
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-base-content/80">
+                          <div className="flex items-center gap-2">
+                            <Hash className="size-4 shrink-0" />
+                            <span>Projects: {totals.count}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="size-4 shrink-0" />
+                            <span>Total: {fmtMoney(totals.amount)}</span>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="mt-3 flex gap-2">
+                          <motion.button whileTap={tap} className="btn btn-xs btn-outline" onClick={() => handleEdit(c)}>
+                            <Edit size={14} />
+                            Edit
+                          </motion.button>
+                          <motion.button whileTap={tap} className="btn btn-xs btn-ghost text-error" onClick={() => handleDelete(c.id)}>
+                            <Trash2 size={14} />
+                            Delete
+                          </motion.button>
+                        </div>
+                      </div>
                     </div>
-
-                    {/* Main info */}
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-base font-semibold text-base-content truncate">{c.name}</h3>
-
-                      <div className="mt-1 flex items-center gap-2 text-sm text-base-content/70">
-                        <Mail className="size-4 shrink-0" />
-                        <span className="truncate">{c.email}</span>
-                      </div>
-
-                      <div className="mt-1 flex items-center gap-2 text-sm text-base-content/70">
-                        <Building2 className="size-4 shrink-0" />
-                        <span className="truncate">{c.company}</span>
-                      </div>
-
-                      <div className="mt-1 flex items-center gap-2 text-sm text-base-content/70">
-                        <Hash className="size-4 shrink-0" />
-                        <span className="truncate">Projects: {c.totalProjects}</span>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="mt-3 flex gap-2">
-                        <motion.button whileTap={tap} className="btn btn-xs btn-outline" onClick={() => handleEdit(c)}>
-                          <Edit size={14} />
-                          Edit
-                        </motion.button>
-                        <motion.button whileTap={tap} className="btn btn-xs btn-ghost text-error" onClick={() => handleDelete(c.id)}>
-                          <Trash2 size={14} />
-                          Delete
-                        </motion.button>
-                      </div>
-                    </div>
-                  </div>
-                </motion.article>
-              </motion.li>
-            ))}
+                  </motion.article>
+                </motion.li>
+              );
+            })}
             {filteredClients.length === 0 && (
               <motion.li variants={itemVariants} className="text-center text-base-content/60 py-4">
                 No clients found.
@@ -284,41 +338,46 @@ export default function ClientsPage() {
                 <th className="px-4 py-2 text-left">Email</th>
                 <th className="px-4 py-2 text-left">Company</th>
                 <th className="px-4 py-2 text-left">Total Projects</th>
+                <th className="px-4 py-2 text-left">Total Amount</th>
                 <th className="px-4 py-2 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-base-300">
               <AnimatePresence initial={false}>
-                {filteredClients.map((client) => (
-                  <motion.tr
-                    key={client.id}
-                    variants={itemVariants}
-                    initial="hidden"
-                    animate="show"
-                    exit="exit"
-                    whileHover={reduceMotion ? undefined : { backgroundColor: "var(--fallback-b1,oklch(var(--b1)))" }}
-                    transition={{ duration: 0.15 }}
-                    className="hover:bg-base-100"
-                  >
-                    <td className="px-4 py-2">{client.name}</td>
-                    <td className="px-4 py-2">{client.email}</td>
-                    <td className="px-4 py-2">{client.company}</td>
-                    <td className="px-4 py-2">{client.totalProjects}</td>
-                    <td className="px-4 py-2">
-                      <div className="flex justify-center gap-2">
-                        <motion.button whileTap={tap} className="btn btn-sm btn-ghost" onClick={() => handleEdit(client)}>
-                          <Edit size={16} />
-                        </motion.button>
-                        <motion.button whileTap={tap} className="btn btn-sm btn-ghost text-error" onClick={() => handleDelete(client.id)}>
-                          <Trash2 size={16} />
-                        </motion.button>
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))}
+                {filteredClients.map((client) => {
+                  const totals = totalsByClient.get(client.id) || { count: 0, amount: 0 };
+                  return (
+                    <motion.tr
+                      key={client.id}
+                      variants={itemVariants}
+                      initial="hidden"
+                      animate="show"
+                      exit="exit"
+                      whileHover={reduceMotion ? undefined : { backgroundColor: "var(--fallback-b1,oklch(var(--b1)))" }}
+                      transition={{ duration: 0.15 }}
+                      className="hover:bg-base-100"
+                    >
+                      <td className="px-4 py-2">{client.name}</td>
+                      <td className="px-4 py-2">{client.email}</td>
+                      <td className="px-4 py-2">{client.company}</td>
+                      <td className="px-4 py-2">{totals.count}</td>
+                      <td className="px-4 py-2">{fmtMoney(totals.amount)}</td>
+                      <td className="px-4 py-2">
+                        <div className="flex justify-center gap-2">
+                          <motion.button whileTap={tap} className="btn btn-sm btn-ghost" onClick={() => handleEdit(client)}>
+                            <Edit size={16} />
+                          </motion.button>
+                          <motion.button whileTap={tap} className="btn btn-sm btn-ghost text-error" onClick={() => handleDelete(client.id)}>
+                            <Trash2 size={16} />
+                          </motion.button>
+                        </div>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
                 {filteredClients.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="text-center py-4 text-base-content/60">
+                    <td colSpan={6} className="text-center py-4 text-base-content/60">
                       No clients found.
                     </td>
                   </tr>
@@ -386,17 +445,6 @@ export default function ClientsPage() {
                   name="company"
                   placeholder="Company"
                   value={formData.company}
-                  onChange={handleInputChange}
-                  required
-                  className="input input-bordered w-full"
-                />
-                <motion.input
-                  whileFocus={reduceMotion ? undefined : { scale: 1.01 }}
-                  transition={{ type: "spring", stiffness: 250, damping: 18, mass: 0.4 }}
-                  type="number"
-                  name="totalProjects"
-                  placeholder="Total Projects"
-                  value={formData.totalProjects}
                   onChange={handleInputChange}
                   required
                   className="input input-bordered w-full"

@@ -2,52 +2,59 @@
 import { z } from "zod";
 import { ObjectId } from "mongodb";
 
+/** DB shape */
+export type ProjectDoc = {
+  _id: ObjectId;
+  name: string;
+  clientId: ObjectId;          // FK to clients
+  status: "Pending" | "In Progress" | "Completed";
+  amount: number;              // NEW
+  deadline: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/** DTO sent to UI */
+export type ProjectDTO = {
+  id: string;
+  name: string;
+  client: string;              // client name (denormalized for UI)
+  status: "Pending" | "In Progress" | "Completed";
+  amount: number;              // NEW
+  deadline: string;            // ISO
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export const ProjectStatus = z.enum(["Pending", "In Progress", "Completed"]);
 
 export const ProjectCreateSchema = z.object({
   name: z.string().min(1),
-  client: z.string().min(1),
-  status: ProjectStatus.default("Pending"),
-  // Receive from client as ISO; convert to Date in API
+  clientId: z.string().min(1),
+  status: ProjectStatus,
+  amount: z.number().min(0),            // NEW
   deadline: z.string().min(1),
 });
+export type ProjectCreate = z.infer<typeof ProjectCreateSchema>;
 
-export const ProjectUpdateSchema = ProjectCreateSchema.partial();
+export const ProjectUpdateSchema = z.object({
+  name: z.string().min(1).optional(),
+  clientId: z.string().min(1).optional(),
+  status: ProjectStatus.optional(),
+  amount: z.number().min(0).optional(), // NEW
+  deadline: z.string().min(1).optional(),
+});
+export type ProjectUpdate = z.infer<typeof ProjectUpdateSchema>;
 
-export type ProjectCreateInput = z.infer<typeof ProjectCreateSchema>;
-export type ProjectUpdateInput = z.infer<typeof ProjectUpdateSchema>;
-
-// Mongo shape
-export interface ProjectDoc {
-  _id: ObjectId;
-  userKey: string; // we’ll store session.user.email as the owner key
-  name: string;
-  client: string;
-  status: "Pending" | "In Progress" | "Completed";
-  deadline: Date;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// API output shape (id as string, deadline as ISO)
-export interface ProjectDTO {
-  id: string;
-  name: string;
-  client: string;
-  status: "Pending" | "In Progress" | "Completed";
-  deadline: string; // ISO
-  createdAt: string;
-  updatedAt: string;
-}
-
-export function toDTO(d: ProjectDoc): ProjectDTO {
+export function toProjectDTO(doc: ProjectDoc, clientName: string): ProjectDTO {
   return {
-    id: d._id.toString(),
-    name: d.name,
-    client: d.client,
-    status: d.status,
-    deadline: d.deadline.toISOString(),
-    createdAt: d.createdAt.toISOString(),
-    updatedAt: d.updatedAt.toISOString(),
+    id: doc._id.toString(),
+    name: doc.name,
+    client: clientName,
+    status: doc.status,
+    amount: doc.amount,
+    deadline: doc.deadline.toISOString(),
+    createdAt: doc.createdAt?.toISOString(),
+    updatedAt: doc.updatedAt?.toISOString(),
   };
 }

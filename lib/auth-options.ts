@@ -1,59 +1,48 @@
 // /lib/auth-options.ts
-import type { AuthOptions } from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
-import { MongoDBAdapter } from "@next-auth/mongodb-adapter";
-import getMongoClientPromise from "@/lib/mongodb";
+import type { NextAuthOptions } from "next-auth";
+import Credentials from "next-auth/providers/credentials";
 
-// If you’re using AUTH_GOOGLE_ID / AUTH_GOOGLE_SECRET (as you showed)
-const GOOGLE_ID = process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID;
-const GOOGLE_SECRET = process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
+export const authOptions: NextAuthOptions = {
+  // No adapter — sessions will use JWT strategy only
+  session: { strategy: "jwt" },
 
-const hasMongo = Boolean(process.env.MONGODB_URI);
-
-export const authOptions: AuthOptions = {
   providers: [
-    GoogleProvider({
-      clientId: GOOGLE_ID as string,
-      clientSecret: GOOGLE_SECRET as string,
+    Credentials({
+      name: "Dev Credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        name: { label: "Name", type: "text" },
+      },
+      async authorize(credentials) {
+        const email = credentials?.email?.toString().trim();
+        const name = credentials?.name?.toString().trim() || "Freelancer";
+        if (!email) return null;
+        // You can do a DB lookup here if you want to validate users
+        return { id: email, email, name };
+      },
     }),
   ],
 
-  // Only attach adapter if Mongo is configured
-  ...(hasMongo ? { adapter: MongoDBAdapter(getMongoClientPromise()) } : {}),
-
-  session: { strategy: "jwt" },
-  pages: { signIn: "/auth/login" },
-  secret: process.env.NEXTAUTH_SECRET,
-
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        // @ts-ignore
-        token.id = (user as any).id ?? token.id;
-        token.email = user.email ?? token.email;
-        token.name = user.name ?? token.name;
-        token.picture = (user as any).image ?? token.picture;
+      if (user?.email) {
+        token.email = user.email;
+        token.name = user.name || token.name;
       }
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
-        // @ts-ignore
-        session.user.id = token.id as string | undefined;
-        session.user.email = token.email ?? session.user.email ?? undefined;
-        session.user.name = token.name ?? session.user.name ?? undefined;
-        // @ts-ignore
-        session.user.image = token.picture ?? session.user.image ?? undefined;
+      if (token?.email) {
+        session.user = {
+          name: (token.name as string) || session.user?.name || "Freelancer",
+          email: token.email as string,
+        } as any;
       }
       return session;
     },
-    // Optional: guard sign-in when Mongo isn’t configured
-    async signIn() {
-      if (!hasMongo) {
-        console.error("Blocking sign-in: MONGODB_URI is not set.");
-        return false;
-      }
-      return true;
-    },
+  },
+
+  pages: {
+    signIn: "/auth/login",
   },
 };

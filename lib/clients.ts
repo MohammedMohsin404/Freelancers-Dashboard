@@ -1,66 +1,81 @@
-// /types/clients.ts
-import { z } from "zod";
-import { ObjectId } from "mongodb";
+// /lib/collections.ts
+import clientPromise from "./mongodb";
+import type { MongoClient, Db, Collection } from "mongodb";
 
-/** Shared base schema */
-export const ClientBaseSchema = z.object({
-  name: z.string().min(1, "Name is required").max(120, "Name too long"),
-  email: z.string().email("Invalid email"),
-  company: z.string().min(1, "Company is required").max(120, "Company too long"),
-  totalProjects: z.number().int().min(0, "Must be >= 0").default(0),
-});
+// If you have these types, we'll use them for strong typing.
+// Otherwise you can temporarily change <ProjectDoc> etc. to <any>.
+import type { ProjectDoc } from "@/types/projects";
+import type { ClientDoc } from "@/types/clients";
 
-/** Create = all required */
-export const ClientCreateSchema = ClientBaseSchema;
-/** Update = all optional */
-export const ClientUpdateSchema = ClientBaseSchema.partial();
+// Keep DB name in one place
+const DB_NAME = process.env.MONGODB_DB || "freelancers-dashboard";
 
-/** Parsed types */
-export type ClientCreate = z.infer<typeof ClientCreateSchema>;
-export type ClientUpdate = z.infer<typeof ClientUpdateSchema>;
+async function db(): Promise<Db> {
+  const client = (await clientPromise) as MongoClient;
+  return client.db(DB_NAME);
+}
 
-/** Mongo shape */
-export interface ClientDoc {
-  _id: ObjectId;
-  name: string;
-  email: string;
-  company: string;
-  totalProjects: number;
+/* -------------------------------- Projects ------------------------------- */
+
+export async function projectsCollection(): Promise<Collection<ProjectDoc>> {
+  const dbase = await db();
+  const col = dbase.collection<ProjectDoc>("projects");
+
+  // Helpful indexes (idempotent; safe to call on every boot)
+  await col.createIndex({ clientId: 1, deadline: 1 }, { name: "by_client_deadline" });
+  await col.createIndex({ name: 1 }, { name: "name_1" });
+
+  return col;
+}
+
+/* -------------------------------- Clients -------------------------------- */
+
+export async function clientsCollection(): Promise<Collection<ClientDoc>> {
+  const dbase = await db();
+  const col = dbase.collection<ClientDoc>("clients");
+
+  // Common lookups
+  await col.createIndex({ email: 1 }, { name: "email_1", sparse: true });
+  await col.createIndex({ name: 1 }, { name: "name_1" });
+
+  return col;
+}
+
+/* -------------------------------- Invoices ------------------------------- */
+
+export type InvoiceDoc = {
+  _id?: any;
+  invoiceId: string; // unique human-readable ID (e.g., INV-2025-00001)
+  client: string;    // client display name
+  clientId?: string; // optional FK to clients._id as string
+  amount: number;
+  status: "Paid" | "Pending";
   createdAt: Date;
   updatedAt: Date;
-}
-
-/** DTO returned to the frontend */
-export type ClientDTO = {
-  id: string;
-  name: string;
-  email: string;
-  company: string;
-  totalProjects: number;
-  createdAt: string;
-  updatedAt: string;
 };
 
-export function toClientDTO(doc: ClientDoc): ClientDTO {
-  return {
-    id: doc._id.toHexString(),
-    name: doc.name,
-    email: doc.email,
-    company: doc.company,
-    totalProjects: doc.totalProjects,
-    createdAt: doc.createdAt.toISOString(),
-    updatedAt: doc.updatedAt.toISOString(),
-  };
+export async function invoicesCollection(): Promise<Collection<InvoiceDoc>> {
+  const dbase = await db();
+  const col = dbase.collection<InvoiceDoc>("invoices");
+
+  await col.createIndex({ invoiceId: 1 }, { unique: true, name: "invoiceId_1" });
+  await col.createIndex({ createdAt: 1 }, { name: "createdAt_1" });
+  await col.createIndex({ clientId: 1 }, { name: "clientId_1" });
+
+  return col;
 }
 
-/** Validate ObjectId strings */
-export function isValidObjectId(id: string): boolean {
-  try {
-    // throws if invalid
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const _ = new ObjectId(id);
-    return true;
-  } catch {
-    return false;
-  }
+/* ------------------------------- Counters -------------------------------- */
+
+type CounterDoc = {
+  _id: string; // e.g. "invoices:2025"
+  seq: number;
+  year?: number;
+};
+
+export async function countersCollection(): Promise<Collection<CounterDoc>> {
+  const dbase = await db();
+  const col = dbase.collection<CounterDoc>("counters");
+  await col.createIndex({ _id: 1 }, { unique: true, name: "_id_1" });
+  return col;
 }

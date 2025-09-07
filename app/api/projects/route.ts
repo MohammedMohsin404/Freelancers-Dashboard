@@ -1,67 +1,102 @@
 // /app/api/projects/route.ts
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { projectsCollection } from "@/lib/collections";
-import { ProjectCreateSchema, toDTO } from "@/types/projects";
-import type { ProjectDoc } from "@/types/projects";
+import { ObjectId } from "mongodb";
+import { projectsCollection, clientsCollection } from "@/lib/collections";
+import {
+  ProjectCreateSchema,
+  type ProjectCreate,
+  type ProjectDoc,
+  toProjectDTO,
+} from "@/types/projects";
 
-function jsonError(message: string, status = 400, extra?: any) {
+function jsonError(message: string, status = 400, extra?: Record<string, unknown>) {
   return NextResponse.json({ error: { message, ...extra } }, { status });
 }
 
 export async function GET() {
   try {
-    const session = await getServerSession();
-    if (!session?.user?.email) return jsonError("Unauthorized", 401);
-
-    const col = await projectsCollection();
-    const docs = await col
-      .find({ userKey: session.user.email })
-      .sort({ createdAt: -1 })
-      .toArray();
-
-    return NextResponse.json(docs.map(toDTO));
-  } catch (e: any) {
-    console.error("GET /api/projects error:", e);
-    return jsonError("Internal server error", 500);
+    const projectsCol = await projectsCollection();
+    const cursor = projectsCol.aggregate([
+      {
+        $lookup: {
+          from: "clients",
+          localField: "clientId",
+          foreignField: "_id",
+          as: "client",
+        },
+      },
+      { $unwind: { path: "$client", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          clientId: 1,
+          status: 1,
+          amount: 1,
+          deadline: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          clientName: { $ifNull: ["$client.name", "—"] },
+        },
+      },
+      { $sort: { createdAt: -1 } },
+    ]);
+    const items = await cursor.toArray();
+    const data = items.map((p) =>
+      toProjectDTO(p as unknown as ProjectDoc, (p as any).clientName as string)
+    );
+    return NextResponse.json(data);
+  } catch (err) {
+    console.error("[GET /api/projects] Failed:", err);
+    return jsonError("Failed to load projects", 500);
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession();
-    if (!session?.user?.email) return jsonError("Unauthorized", 401);
-
-    let body: unknown;
-    try {
-      body = await req.json();
-    } catch {
-      return jsonError("Invalid JSON body", 400);
-    }
-
-    const parsed = ProjectCreateSchema.safeParse(body);
+    const raw = await req.json();
+    const parsed = ProjectCreateSchema.safeParse(raw);
     if (!parsed.success) {
-      return jsonError("Validation error", 422, { issues: parsed.error.flatten() });
+      return jsonError("Invalid payload", 422, { issues: parsed.error.flatten() });
     }
+    const input = parsed.data as ProjectCreate;
+
+    // validate client
+    const clientsCol = await clientsCollection();
+    const clientId = new ObjectId(input.clientId);
+    const client = await clientsCol.findOne({ _id: clientId });
+    if (!client) return jsonError("Client not found", 404);
+
+    // deadline check (no past date)
+    const deadlineDate = new Date(input.deadline);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (isNaN(+deadlineDate)) return jsonError("Invalid deadline date", 422);
+    if (deadlineDate < today) return jsonError("Deadline cannot be in the past", 422);
 
     const now = new Date();
     const doc: Omit<ProjectDoc, "_id"> = {
-      userKey: session.user.email,
-      name: parsed.data.name,
-      client: parsed.data.client,
-      status: parsed.data.status,
-      deadline: new Date(parsed.data.deadline),
+      name: input.name,
+      clientId,
+      status: input.status,
+      amount: input.amount,     // NEW
+      deadline: deadlineDate,
       createdAt: now,
       updatedAt: now,
     };
 
-    const col = await projectsCollection();
-    const res = await col.insertOne(doc as ProjectDoc);
-    const created = await col.findOne({ _id: res.insertedId });
+    const projectsCol = await projectsCollection();
+    const ins = await projectsCol.insertOne(doc);
 
-    return NextResponse.json(toDTO(created as ProjectDoc), { status: 201 });
-  } catch (e: any) {
-    console.error("POST /api/projects error:", e);
-    return jsonError("Internal server error", 500);
+    // adjust client counters
+    await clientsCol.updateOne(
+      { _id: clientId },
+      { $inc: { totalProjects: 1, totalAmount: input.amount } }
+    );
+
+    const created: ProjectDoc = { _id: ins.insertedId, ...doc };
+    return NextResponse.json(toProjectDTO(created, client.name), { status: 201 });
+  } catch (err) {
+    console.error("[POST /api/projects] Failed:", err);
+    return jsonError("Failed to create project", 500);
   }
 }

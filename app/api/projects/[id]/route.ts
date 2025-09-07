@@ -1,93 +1,168 @@
 // /app/api/projects/[id]/route.ts
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { projectsCollection } from "@/lib/collections";
 import { ObjectId } from "mongodb";
-import { ProjectUpdateSchema, toDTO } from "@/types/projects";
-import type { ProjectDoc } from "@/types/projects";
+import { projectsCollection, clientsCollection } from "@/lib/collections";
+import {
+  ProjectUpdateSchema,
+  type ProjectUpdate,
+  type ProjectDoc,
+  toProjectDTO,
+} from "@/types/projects";
 
-function jsonError(message: string, status = 400, extra?: any) {
+function jsonError(message: string, status = 400, extra?: Record<string, unknown>) {
   return NextResponse.json({ error: { message, ...extra } }, { status });
 }
 
-export async function GET(
-  _req: Request,
-  { params }: { params: { id: string } }
+export async function PUT(
+  req: Request,
+  ctx: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession();
-    if (!session?.user?.email) return jsonError("Unauthorized", 401);
-
-    const { id } = params;
+    const { id } = await ctx.params;
     if (!ObjectId.isValid(id)) return jsonError("Invalid id", 400);
 
-    const col = await projectsCollection();
-    const doc = await col.findOne({ _id: new ObjectId(id), userKey: session.user.email });
-    if (!doc) return jsonError("Not found", 404);
+    const raw = await req.json();
+    const parsed = ProjectUpdateSchema.safeParse(raw);
+    if (!parsed.success) {
+      return jsonError("Invalid payload", 422, { issues: parsed.error.flatten() });
+    }
+    const input = parsed.data as ProjectUpdate;
 
-    return NextResponse.json(toDTO(doc as ProjectDoc));
-  } catch (e: any) {
-    console.error("GET /api/projects/:id error:", e);
-    return jsonError("Internal server error", 500);
+    const projectsCol = await projectsCollection();
+    const clientsCol = await clientsCollection();
+
+    const project = await projectsCol.findOne({ _id: new ObjectId(id) });
+    if (!project) return jsonError("Project not found", 404);
+
+    const update: Partial<ProjectDoc> = { updatedAt: new Date() };
+
+    // Track adjustments for counters
+    let moveClientFrom: ObjectId | null = null;
+    let moveClientTo: ObjectId | null = null;
+    let amountDeltaForOldClient = 0;
+    let amountDeltaForNewClient = 0;
+
+    // Client move?
+    if (input.clientId) {
+      const newClientId = new ObjectId(input.clientId);
+      if (!project.clientId.equals(newClientId)) {
+        const newClient = await clientsCol.findOne({ _id: newClientId });
+        if (!newClient) return jsonError("New client not found", 404);
+        moveClientFrom = project.clientId;
+        moveClientTo = newClientId;
+        update.clientId = newClientId;
+      }
+    }
+
+    // Amount change?
+    if (typeof input.amount === "number") {
+      update.amount = input.amount;
+      const diff = input.amount - project.amount;
+      // If no client move, apply diff to current client
+      if (!moveClientFrom && !moveClientTo) {
+        amountDeltaForOldClient = diff;
+      } else {
+        // If moving, remove full old amount from old client, add new amount to new client
+        amountDeltaForOldClient = -project.amount;
+        amountDeltaForNewClient = input.amount;
+      }
+    } else if (moveClientFrom && moveClientTo) {
+      // moving but amount unchanged
+      amountDeltaForOldClient = -project.amount;
+      amountDeltaForNewClient = project.amount;
+    }
+
+    if (input.name !== undefined) update.name = input.name;
+    if (input.status !== undefined) update.status = input.status;
+
+    if (input.deadline !== undefined) {
+      const deadlineDate = new Date(input.deadline);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      if (isNaN(+deadlineDate)) return jsonError("Invalid deadline date", 422);
+      if (deadlineDate < today) return jsonError("Deadline cannot be in the past", 422);
+      update.deadline = deadlineDate;
+    }
+
+    await projectsCol.updateOne({ _id: project._id }, { $set: update });
+
+    // Apply counters
+    if (moveClientFrom && moveClientTo) {
+      await clientsCol.updateOne(
+        { _id: moveClientFrom },
+        { $inc: { totalProjects: -1, totalAmount: amountDeltaForOldClient } }
+      );
+      await clientsCol.updateOne(
+        { _id: moveClientTo },
+        { $inc: { totalProjects: 1, totalAmount: amountDeltaForNewClient } }
+      );
+    } else if (amountDeltaForOldClient !== 0) {
+      await clientsCol.updateOne(
+        { _id: project.clientId },
+        { $inc: { totalAmount: amountDeltaForOldClient } }
+      );
+    }
+
+    // Return updated DTO with client name
+    const out = await projectsCol.aggregate([
+      { $match: { _id: project._id } },
+      {
+        $lookup: {
+          from: "clients",
+          localField: "clientId",
+          foreignField: "_id",
+          as: "client",
+        },
+      },
+      { $unwind: { path: "$client", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          clientId: 1,
+          status: 1,
+          amount: 1,
+          deadline: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          clientName: { $ifNull: ["$client.name", "—"] },
+        },
+      },
+    ]).next();
+
+    return NextResponse.json(
+      toProjectDTO(out as unknown as ProjectDoc, (out as any).clientName)
+    );
+  } catch (err) {
+    console.error("[PUT /api/projects/:id] Failed:", err);
+    return jsonError("Failed to update project", 500);
   }
 }
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
   try {
-    const session = await getServerSession();
-    if (!session?.user?.email) return jsonError("Unauthorized", 401);
-
-    const { id } = params;
+    const { id } = await ctx.params;
     if (!ObjectId.isValid(id)) return jsonError("Invalid id", 400);
 
-    let body: unknown;
-    try {
-      body = await req.json();
-    } catch {
-      return jsonError("Invalid JSON body", 400);
-    }
+    const projectsCol = await projectsCollection();
+    const clientsCol = await clientsCollection();
 
-    const parsed = ProjectUpdateSchema.safeParse(body);
-    if (!parsed.success) {
-      return jsonError("Validation error", 422, { issues: parsed.error.flatten() });
-    }
+    const project = await projectsCol.findOne({ _id: new ObjectId(id) });
+    if (!project) return jsonError("Not found", 404);
 
-    const update: any = { updatedAt: new Date() };
-    if (parsed.data.name !== undefined) update.name = parsed.data.name;
-    if (parsed.data.client !== undefined) update.client = parsed.data.client;
-    if (parsed.data.status !== undefined) update.status = parsed.data.status;
-    if (parsed.data.deadline !== undefined) update.deadline = new Date(parsed.data.deadline);
+    await projectsCol.deleteOne({ _id: project._id });
 
-    const col = await projectsCollection();
-    const res = await col.findOneAndUpdate(
-      { _id: new ObjectId(id), userKey: session.user.email },
-      { $set: update },
-      { returnDocument: "after" }
+    // decrement counters and subtract amount
+    await clientsCol.updateOne(
+      { _id: project.clientId },
+      { $inc: { totalProjects: -1, totalAmount: -project.amount } }
     );
 
-    if (!res) return jsonError("Not found", 404);
-    return NextResponse.json(toDTO(res as unknown as ProjectDoc));
-  } catch (e: any) {
-    console.error("PUT /api/projects/:id error:", e);
-    return jsonError("Internal server error", 500);
-  }
-}
-
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  try {
-    const session = await getServerSession();
-    if (!session?.user?.email) return jsonError("Unauthorized", 401);
-
-    const { id } = params;
-    if (!ObjectId.isValid(id)) return jsonError("Invalid id", 400);
-
-    const col = await projectsCollection();
-    const res = await col.deleteOne({ _id: new ObjectId(id), userKey: session.user.email });
-    if (res.deletedCount === 0) return jsonError("Not found", 404);
-
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    console.error("DELETE /api/projects/:id error:", e);
-    return jsonError("Internal server error", 500);
+  } catch (err) {
+    console.error("[DELETE /api/projects/:id] Failed:", err);
+    return jsonError("Failed to delete project", 500);
   }
 }
