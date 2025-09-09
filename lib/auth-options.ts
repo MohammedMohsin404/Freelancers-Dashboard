@@ -1,48 +1,35 @@
 // /lib/auth-options.ts
 import type { NextAuthOptions } from "next-auth";
-import Credentials from "next-auth/providers/credentials";
+import Google from "next-auth/providers/google";
+
+/**
+ * Minimal, adapter-free NextAuth config (JWT sessions).
+ * Env needed:
+ *   AUTH_GOOGLE_ID
+ *   AUTH_GOOGLE_SECRET
+ *   NEXTAUTH_URL
+ *   NEXTAUTH_SECRET
+ */
+const HAS_GOOGLE =
+  !!process.env.AUTH_GOOGLE_ID && !!process.env.AUTH_GOOGLE_SECRET;
 
 export const authOptions: NextAuthOptions = {
-  // No adapter — sessions will use JWT strategy only
   session: { strategy: "jwt" },
 
+  pages: { signIn: "/auth/login" },
+
   providers: [
-    Credentials({
-      name: "Dev Credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        name: { label: "Name", type: "text" },
-      },
-      async authorize(credentials) {
-        const email = credentials?.email?.toString().trim();
-        const name = credentials?.name?.toString().trim() || "Freelancer";
-        if (!email) return null;
-        // You can do a DB lookup here if you want to validate users
-        return { id: email, email, name };
-      },
-    }),
+    ...(HAS_GOOGLE
+      ? [
+          Google({
+            clientId: process.env.AUTH_GOOGLE_ID as string,
+            clientSecret: process.env.AUTH_GOOGLE_SECRET as string,
+          }),
+        ]
+      : []),
   ],
 
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user?.email) {
-        token.email = user.email;
-        token.name = user.name || token.name;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      if (token?.email) {
-        session.user = {
-          name: (token.name as string) || session.user?.name || "Freelancer",
-          email: token.email as string,
-        } as any;
-      }
-      return session;
-    },
-  },
-
-  pages: {
-    signIn: "/auth/login",
-  },
+  debug: process.env.NODE_ENV === "development",
 };
+
+export default authOptions;

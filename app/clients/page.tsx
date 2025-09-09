@@ -1,13 +1,25 @@
-// /app/clients/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState, ChangeEvent } from "react";
-import { Plus, Edit, Trash2, Users, Mail, Building2, Hash, X, DollarSign } from "lucide-react";
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Users,
+  Mail,
+  Building2,
+  Hash,
+  X,
+  DollarSign,
+  RefreshCcw,
+} from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion, Variants } from "framer-motion";
 import toast from "react-hot-toast";
 import Modal from "../components/Modal";
 import { safeFetchJSON, jsonBody, HttpError } from "@/lib/http";
+import { SkeletonCard, SkeletonTableRow } from "@/app/components/Skeleton";
 
+/* ================= Types ================= */
 type Client = {
   id: string;
   name: string;
@@ -24,6 +36,7 @@ type ProjectLite = {
   amount?: number;
 };
 
+/* ================= Helpers ================= */
 function avatarInitials(name: string) {
   return name
     .split(" ")
@@ -35,12 +48,17 @@ function avatarInitials(name: string) {
 
 function fmtMoney(value: number) {
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value ?? 0);
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 2,
+    }).format(value ?? 0);
   } catch {
     return `$${(value ?? 0).toFixed(2)}`;
   }
 }
 
+/* ================= Page ================= */
 export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<ProjectLite[]>([]); // for totals
@@ -59,50 +77,49 @@ export default function ClientsPage() {
   const [search, setSearch] = useState("");
   const reduceMotion = useReducedMotion();
 
-  // Load Clients + Projects for totals
+  /* ===== Load data (clients + projects) ===== */
+  const loadAll = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [cData, pData] = await Promise.all([
+        safeFetchJSON<Client[]>("/api/clients"),
+        safeFetchJSON<ProjectLite[]>("/api/projects"),
+      ]);
+      setClients(cData);
+      setProjects(
+        pData.map((p) => ({
+          id: p.id,
+          client: p.client,
+          clientId: p.clientId,
+          amount: p.amount ?? 0,
+        }))
+      );
+    } catch (e: any) {
+      const msg = e instanceof HttpError ? e.message : e?.message || "Failed to load clients";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        setLoading(true);
-        const [cData, pData] = await Promise.all([
-          safeFetchJSON<Client[]>("/api/clients"),
-          safeFetchJSON<ProjectLite[]>("/api/projects"),
-        ]);
-        if (!alive) return;
-        setClients(cData);
-        setProjects(
-          pData.map(p => ({
-            id: p.id,
-            client: p.client,
-            clientId: p.clientId,
-            amount: p.amount ?? 0,
-          }))
-        );
-      } catch (e: any) {
-        const msg = e instanceof HttpError ? e.message : e?.message || "Failed to load clients";
-        if (alive) setError(msg);
-        toast.error(msg);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => { alive = false; };
+    loadAll();
   }, []);
 
-  // Totals by clientId (preferred) or by name
+  /* ===== Totals by client ===== */
   const totalsByClient = useMemo(() => {
     const map = new Map<string, { count: number; amount: number }>();
 
-    // build key set from client ids
-    clients.forEach(c => {
+    // init all clients
+    clients.forEach((c) => {
       map.set(c.id, { count: 0, amount: 0 });
     });
 
-    projects.forEach(p => {
-      // choose key
-      const byId = p.clientId && map.has(p.clientId);
-      const key = byId ? p.clientId! : clients.find(c => c.name === p.client)?.id;
+    projects.forEach((p) => {
+      const hasId = p.clientId && map.has(p.clientId);
+      const key = hasId ? (p.clientId as string) : clients.find((c) => c.name === p.client)?.id;
       if (!key) return;
       const cur = map.get(key)!;
       cur.count += 1;
@@ -112,16 +129,18 @@ export default function ClientsPage() {
     return map; // key: client.id
   }, [clients, projects]);
 
+  /* ===== Filtering ===== */
   const filteredClients = useMemo(() => {
     const q = search.trim().toLowerCase();
     return clients.filter(
-      c =>
+      (c) =>
         c.name.toLowerCase().includes(q) ||
         c.email.toLowerCase().includes(q) ||
         c.company.toLowerCase().includes(q)
     );
   }, [clients, search]);
 
+  /* ===== CRUD handlers ===== */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving) return;
@@ -132,24 +151,32 @@ export default function ClientsPage() {
       if (editId) {
         await toast.promise(
           (async () => {
-            const updated = await safeFetchJSON<Client>(
-              `/api/clients/${editId}`,
-              { method: "PUT", ...jsonBody(formData) }
-            );
-            setClients(prev => prev.map(c => (c.id === updated.id ? updated : c)));
+            const updated = await safeFetchJSON<Client>(`/api/clients/${editId}`, {
+              method: "PUT",
+              ...jsonBody(formData),
+            });
+            setClients((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
           })(),
-          { loading: "Updating client…", success: "Client updated", error: (err) => err?.message || "Update failed" }
+          {
+            loading: "Updating client…",
+            success: "Client updated",
+            error: (err) => err?.message || "Update failed",
+          }
         );
       } else {
         await toast.promise(
           (async () => {
-            const created = await safeFetchJSON<Client>(
-              "/api/clients",
-              { method: "POST", ...jsonBody({ ...formData /* no totals here */ }) }
-            );
-            setClients(prev => [created, ...prev]);
+            const created = await safeFetchJSON<Client>("/api/clients", {
+              method: "POST",
+              ...jsonBody({ ...formData }),
+            });
+            setClients((prev) => [created, ...prev]);
           })(),
-          { loading: "Creating client…", success: "Client created", error: (err) => err?.message || "Create failed" }
+          {
+            loading: "Creating client…",
+            success: "Client created",
+            error: (err) => err?.message || "Create failed",
+          }
         );
       }
 
@@ -179,7 +206,7 @@ export default function ClientsPage() {
       await toast.promise(
         (async () => {
           await safeFetchJSON(`/api/clients/${id}`, { method: "DELETE" });
-          setClients(prev => prev.filter(c => c.id !== id));
+          setClients((prev) => prev.filter((c) => c.id !== id));
         })(),
         { loading: "Deleting…", success: "Client deleted", error: (err) => err?.message || "Delete failed" }
       );
@@ -190,10 +217,10 @@ export default function ClientsPage() {
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Animations
+  /* ===== Animations ===== */
   const headerVariants: Variants = {
     hidden: { opacity: 0, y: reduceMotion ? 0 : 8 },
     show: { opacity: 1, y: 0, transition: { duration: 0.25 } },
@@ -217,24 +244,38 @@ export default function ClientsPage() {
 
   const tap = { scale: reduceMotion ? 1 : 0.98 };
 
+  /* ===== Render ===== */
   return (
     <div className="p-4 sm:p-6">
       {/* Header */}
       <motion.div variants={headerVariants} initial="hidden" animate="show" className="mb-3 flex items-center gap-2">
         <Users className="size-5 text-primary" />
         <h2 className="text-base font-bold sm:text-lg md:text-xl">Clients</h2>
+        <motion.button whileTap={tap} className="btn btn-primary ml-2" onClick={loadAll}>
+          <RefreshCcw className="size-4" />
+          Refresh
+        </motion.button>
+      
       </motion.div>
 
       {/* Controls */}
-      <motion.div variants={controlsVariants} initial="hidden" animate="show" className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <motion.button whileTap={tap} whileHover={reduceMotion ? undefined : { y: -1 }} className="btn btn-primary flex items-center gap-2" onClick={() => {
-          setEditId(null);
-          setFormData({ name: "", email: "", company: "" });
-          setModalOpen(true);
-        }}>
-          <Plus size={16} /> Add Client
+      <motion.div
+        variants={controlsVariants}
+        initial="hidden"
+        animate="show"
+        className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-ceanter sm:justify-between"
+      >
+          <motion.button
+          whileTap={tap}
+          className="btn btn-primary ml-2"
+          onClick={() => {
+            setEditId(null);
+            setFormData({ name: "", email: "", company: "" });
+            setModalOpen(true);
+          }}
+        >
+          <Plus className="size-4" /> Add Client
         </motion.button>
-
         <motion.input
           whileFocus={reduceMotion ? undefined : { scale: 1.01 }}
           transition={{ type: "spring", stiffness: 250, damping: 18, mass: 0.4 }}
@@ -249,11 +290,48 @@ export default function ClientsPage() {
       {/* Error banner */}
       {error && (
         <div className="alert alert-error mb-3">
-          <span>{error}</span>
+          <div className="flex items-center gap-2">
+            <span>{error}</span>
+            <button className="btn btn-xs" onClick={loadAll}>
+              <RefreshCcw className="size-3.5" /> Retry
+            </button>
+          </div>
         </div>
       )}
 
-      {/* MOBILE-FIRST: Cards on < md */}
+      {/* Loading skeletons */}
+      {loading && (
+        <>
+          <ul className="grid grid-cols-1 gap-3 sm:gap-4 md:hidden">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <li key={i}>
+                <SkeletonCard />
+              </li>
+            ))}
+          </ul>
+          <div className="hidden md:block overflow-x-auto bg-base-100 shadow-md rounded-lg mt-2">
+            <table className="min-w-full divide-y divide-base-300">
+              <thead className="bg-base-200">
+                <tr>
+                  <th className="px-4 py-2 text-left">Name</th>
+                  <th className="px-4 py-2 text-left">Email</th>
+                  <th className="px-4 py-2 text-left">Company</th>
+                  <th className="px-4 py-2 text-left">Total Projects</th>
+                  <th className="px-4 py-2 text-left">Total Amount</th>
+                  <th className="px-4 py-2 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-base-300">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonTableRow key={i} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* MOBILE cards */}
       {!loading && (
         <motion.ul variants={listVariants} initial="hidden" animate="show" className="grid grid-cols-1 gap-3 sm:gap-4 md:hidden">
           <AnimatePresence initial={false}>
@@ -261,23 +339,19 @@ export default function ClientsPage() {
               const totals = totalsByClient.get(c.id) || { count: 0, amount: 0 };
               return (
                 <motion.li key={c.id} variants={itemVariants} exit="exit">
-                  <motion.article whileHover={reduceMotion ? undefined : { y: -2 }} transition={{ duration: 0.15 }} className="relative rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
+                  <motion.article
+                    whileHover={reduceMotion ? undefined : { y: -2 }}
+                    transition={{ duration: 0.15 }}
+                    className="relative rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm"
+                  >
                     <div className="flex items-start gap-3">
-                      {/* Avatar */}
                       <div
-                        className="
-                          inline-grid place-items-center
-                          w-10 h-10 rounded-full
-                          bg-primary/10 text-primary
-                          font-bold leading-none select-none
-                          text-[0.95rem] tracking-wide
-                        "
+                        className="inline-grid place-items-center w-10 h-10 rounded-full bg-primary/10 text-primary font-bold leading-none select-none text-[0.95rem] tracking-wide"
                         aria-hidden="true"
                       >
                         {avatarInitials(c.name)}
                       </div>
 
-                      {/* Main info */}
                       <div className="min-w-0 flex-1">
                         <h3 className="text-base font-semibold text-base-content truncate">{c.name}</h3>
 
@@ -302,7 +376,6 @@ export default function ClientsPage() {
                           </div>
                         </div>
 
-                        {/* Actions */}
                         <div className="mt-3 flex gap-2">
                           <motion.button whileTap={tap} className="btn btn-xs btn-outline" onClick={() => handleEdit(c)}>
                             <Edit size={14} />
@@ -367,7 +440,11 @@ export default function ClientsPage() {
                           <motion.button whileTap={tap} className="btn btn-sm btn-ghost" onClick={() => handleEdit(client)}>
                             <Edit size={16} />
                           </motion.button>
-                          <motion.button whileTap={tap} className="btn btn-sm btn-ghost text-error" onClick={() => handleDelete(client.id)}>
+                          <motion.button
+                            whileTap={tap}
+                            className="btn btn-sm btn-ghost text-error"
+                            onClick={() => handleDelete(client.id)}
+                          >
                             <Trash2 size={16} />
                           </motion.button>
                         </div>
@@ -449,12 +526,7 @@ export default function ClientsPage() {
                   required
                   className="input input-bordered w-full"
                 />
-                <motion.button
-                  whileTap={tap}
-                  type="submit"
-                  className="btn btn-primary mt-2"
-                  disabled={saving}
-                >
+                <motion.button whileTap={tap} type="submit" className="btn btn-primary mt-2" disabled={saving}>
                   {saving ? "Saving…" : editId ? "Update Client" : "Add Client"}
                 </motion.button>
               </form>

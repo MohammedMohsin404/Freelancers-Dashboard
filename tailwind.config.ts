@@ -1,29 +1,31 @@
 import type { Config } from "tailwindcss";
 
 const config = {
+  darkMode: ["class", '[data-theme="dark"]'], // supports both .dark and data-theme="dark"
   content: [
-    "./app/**/*.{ts,tsx}",
-    "./pages/**/*.{ts,tsx}",
-    "./components/**/*.{ts,tsx}",
-    "./src/**/*.{ts,tsx}",
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
-      // your custom tokens here if you want
+      // your custom tokens can go here if needed
     },
   },
   plugins: [require("daisyui")],
   daisyui: {
     /**
-     * IMPORTANT: Do NOT import from "daisyui/src/...".
-     * Define your custom theme directly here or use built-ins.
+     * IMPORTANT:
+     * - Do NOT import from "daisyui/src/...".
+     * - Keep theme objects flat here.
      */
     themes: [
       {
         light: {
-          // Start from a clean custom theme (no spread from internals)
           primary: "#4f46e5",
           "primary-content": "#ffffff",
+
           secondary: "#22c55e",
           accent: "#06b6d4",
           neutral: "#0f172a",
@@ -38,8 +40,28 @@ const config = {
           error: "#ef4444",
         },
       },
-      "dark", // keep DaisyUI's built-in dark theme
+      {
+        dark: {
+          primary: "#4f46e5",
+          "primary-content": "#ffffff",
+
+          secondary: "#22c55e",
+          accent: "#06b6d4",
+          neutral: "#0f172a",
+
+          // darker bases for comfortable contrast
+          "base-100": "#0b1120", // main surface
+          "base-200": "#0a0f1a",
+          "base-300": "#0a1222",
+
+          info: "#0ea5e9",
+          success: "#22c55e",
+          warning: "#f59e0b",
+          error: "#ef4444",
+        },
+      },
     ],
+    darkTheme: "dark",
   },
 } satisfies Config & { daisyui: unknown };
 

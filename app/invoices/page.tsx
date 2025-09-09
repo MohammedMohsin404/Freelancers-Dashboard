@@ -1,4 +1,3 @@
-// /app/invoices/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState, useRef, ChangeEvent } from "react";
@@ -52,7 +51,7 @@ export default function InvoicesPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<ProjectLite[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<string | "new" | null>(null); // disables while PUT/POST/DELETE
+  const [savingId, setSavingId] = useState<string | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // form state
@@ -72,7 +71,7 @@ export default function InvoicesPage() {
 
   // search
   const [search, setSearch] = useState("");
-  const [q, setQ] = useState(""); // debounced value
+  const [q, setQ] = useState("");
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [filterStatus, setFilterStatus] = useState<"" | Invoice["status"]>("");
   const reduceMotion = useReducedMotion();
@@ -114,10 +113,7 @@ export default function InvoicesPage() {
     }
   };
 
-  useEffect(() => {
-    loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { loadAll(); }, []);
 
   /* ====== Debounce search ====== */
   useEffect(() => {
@@ -295,21 +291,22 @@ export default function InvoicesPage() {
 
   return (
     <div className="p-4 sm:p-6">
-      {/* Header + New Invoice button on LEFT */}
-      <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Receipt className="size-5 text-primary" />
-          <h2 className="text-base font-bold sm:text-lg md:text-xl">Invoices</h2>
-          <motion.button
-            whileTap={tap}
-            className="btn btn-primary ml-2"
-            onClick={openCreate}
-            disabled={savingId === "new"}
-          >
-            <Plus className="size-4" /> {savingId === "new" ? "Working…" : "New Invoice"}
-          </motion.button>
-        </div>
+      {/* Header */}
+      <div className="mb-4 flex items-center gap-2">
+        <Receipt className="size-5 text-primary" />
+        <h2 className="text-base font-bold sm:text-lg md:text-xl">Invoices</h2>
+        <motion.button whileTap={tap} className="btn btn-primary ml-2" onClick={loadAll} disabled={savingId !== null}>
+          <RefreshCcw className="size-4" />
+          Refresh
+        </motion.button>
+       
+      </div>
 
+      {/* Controls */}
+      <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+         <motion.button whileTap={tap} className="btn btn-primary ml-2" onClick={openCreate} disabled={savingId === "new"}>
+          <Plus className="size-4" /> {savingId === "new" ? "Working…" : "New Invoice"}
+        </motion.button>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
           <input
             type="text"

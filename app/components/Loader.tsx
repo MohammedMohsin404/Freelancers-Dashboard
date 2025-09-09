@@ -1,8 +1,8 @@
 // /app/components/Loader.tsx
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
-import { cn } from "@/lib/utils"; // <-- this now resolves
+import { motion, useReducedMotion, type TargetAndTransition, type Transition } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 type SpinnerProps = {
   label?: string;
@@ -12,14 +12,13 @@ type SpinnerProps = {
 
 export function Spinner({ label = "Loading…", className, size = 24 }: SpinnerProps) {
   const reduce = useReducedMotion();
-  const ring = {
-    animate: reduce
-      ? {}
-      : {
-          rotate: 360,
-          transition: { duration: 1, ease: "linear", repeat: Infinity },
-        },
-  };
+
+  // Use cubic-bezier tuples to satisfy TS
+  const easeLinear = [0.0, 0.0, 1.0, 1.0] as [number, number, number, number];
+
+  const animate: TargetAndTransition = reduce
+    ? {}
+    : { rotate: 360, transition: { duration: 1, ease: easeLinear, repeat: Infinity } };
 
   return (
     <div
@@ -35,7 +34,7 @@ export function Spinner({ label = "Loading…", className, size = 24 }: SpinnerP
           borderWidth: Math.max(2, Math.floor(size / 12)),
         }}
         className="inline-block rounded-full border-base-300 border-t-primary"
-        animate={ring.animate}
+        animate={animate}
       />
       <span className="text-sm">{label}</span>
     </div>
@@ -49,6 +48,7 @@ type PageLoaderProps = {
 
 export function PageLoader({ label = "Loading", tip }: PageLoaderProps) {
   const reduce = useReducedMotion();
+  const easeInOut = [0.42, 0, 0.58, 1] as [number, number, number, number];
 
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-base-100/80 backdrop-blur-sm">
@@ -77,7 +77,7 @@ export function PageLoader({ label = "Loading", tip }: PageLoaderProps) {
             className="h-full w-1/3 rounded-full bg-primary"
             initial={{ x: "-100%" }}
             animate={reduce ? {} : { x: ["-100%", "100%"] }}
-            transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+            transition={{ duration: 1.2, repeat: Infinity, ease: easeInOut }}
           />
         </motion.div>
       </div>
@@ -85,22 +85,43 @@ export function PageLoader({ label = "Loading", tip }: PageLoaderProps) {
   );
 }
 
-export function Dots({ label = "Loading", className }: { label?: string; className?: string }) {
+export function Dots({
+  label = "Loading",
+  className,
+}: {
+  label?: string;
+  className?: string;
+}) {
   const reduce = useReducedMotion();
-  const dot = (delay: number) =>
-    reduce
-      ? {}
-      : {
-          animate: { y: [0, -3, 0] },
-          transition: { duration: 0.6, delay, repeat: Infinity, ease: "easeInOut" },
-        };
+  const easeInOut = [0.42, 0, 0.58, 1] as [number, number, number, number];
+
+  const getAnimate = (delay: number): TargetAndTransition =>
+    reduce ? { opacity: 1 } : { y: [0, -3, 0] };
+
+  const getTransition = (delay: number): Transition | undefined =>
+    reduce ? undefined : { duration: 0.6, delay, repeat: Infinity, ease: easeInOut };
 
   return (
     <div role="status" aria-label={label} className={cn("inline-flex items-center gap-1", className)}>
       <span className="text-sm text-base-content/70">{label}</span>
-      <motion.span className="size-1.5 rounded-full bg-base-content/40" {...dot(0)} />
-      <motion.span className="size-1.5 rounded-full bg-base-content/40" {...dot(0.15)} />
-      <motion.span className="size-1.5 rounded-full bg-base-content/40" {...dot(0.3)} />
+      <motion.span
+        className="size-1.5 rounded-full bg-base-content/40"
+        animate={getAnimate(0)}
+        transition={getTransition(0)}
+      />
+      <motion.span
+        className="size-1.5 rounded-full bg-base-content/40"
+        animate={getAnimate(0.15)}
+        transition={getTransition(0.15)}
+      />
+      <motion.span
+        className="size-1.5 rounded-full bg-base-content/40"
+        animate={getAnimate(0.3)}
+        transition={getTransition(0.3)}
+      />
     </div>
   );
 }
+
+// Back-compat export names if other files import these:
+export { Spinner as Loader };

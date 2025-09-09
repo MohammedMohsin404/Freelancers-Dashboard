@@ -1,6 +1,10 @@
 // /app/api/projects/route.ts
 import { NextResponse } from "next/server";
-import { ObjectId } from "mongodb";
+import {
+  ObjectId,
+  type Collection,
+  type InsertOneResult,
+} from "mongodb";
 import { projectsCollection, clientsCollection } from "@/lib/collections";
 import {
   ProjectCreateSchema,
@@ -13,9 +17,26 @@ function jsonError(message: string, status = 400, extra?: Record<string, unknown
   return NextResponse.json({ error: { message, ...extra } }, { status });
 }
 
+/**
+ * DB shape for projects.
+ * NOTE: `_id` is optional here so insertOne(doc) is valid.
+ * `clientId` is an ObjectId in the database.
+ */
+type ProjectDocDB = {
+  _id?: ObjectId;
+  name: string;
+  clientId: ObjectId;
+  status: ProjectDoc["status"];
+  amount: number;
+  deadline: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export async function GET() {
   try {
     const projectsCol = await projectsCollection();
+
     const cursor = projectsCol.aggregate([
       {
         $lookup: {
@@ -41,10 +62,12 @@ export async function GET() {
       },
       { $sort: { createdAt: -1 } },
     ]);
+
     const items = await cursor.toArray();
     const data = items.map((p) =>
       toProjectDTO(p as unknown as ProjectDoc, (p as any).clientName as string)
     );
+
     return NextResponse.json(data);
   } catch (err) {
     console.error("[GET /api/projects] Failed:", err);
@@ -61,41 +84,78 @@ export async function POST(req: Request) {
     }
     const input = parsed.data as ProjectCreate;
 
-    // validate client
-    const clientsCol = await clientsCollection();
+    // Validate clientId
+    if (!input.clientId || !ObjectId.isValid(input.clientId)) {
+      return jsonError("Invalid clientId", 422);
+    }
     const clientId = new ObjectId(input.clientId);
+
+    // Client must exist
+    const clientsCol = await clientsCollection();
     const client = await clientsCol.findOne({ _id: clientId });
     if (!client) return jsonError("Client not found", 404);
 
-    // deadline check (no past date)
+    // Validate & normalize deadline (no past dates)
     const deadlineDate = new Date(input.deadline);
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    if (isNaN(+deadlineDate)) return jsonError("Invalid deadline date", 422);
-    if (deadlineDate < today) return jsonError("Deadline cannot be in the past", 422);
+    if (Number.isNaN(deadlineDate.valueOf())) {
+      return jsonError("Invalid deadline date", 422);
+    }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (deadlineDate < today) {
+      return jsonError("Deadline cannot be in the past", 422);
+    }
+
+    // Validate amount
+    const amount = Number(input.amount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      return jsonError("Amount must be a non-negative number", 422);
+    }
 
     const now = new Date();
-    const doc: Omit<ProjectDoc, "_id"> = {
-      name: input.name,
+
+    // Build DB doc with optional _id
+    const doc: ProjectDocDB = {
+      name: input.name.trim(),
       clientId,
       status: input.status,
-      amount: input.amount,     // NEW
+      amount,
       deadline: deadlineDate,
       createdAt: now,
       updatedAt: now,
     };
 
-    const projectsCol = await projectsCollection();
-    const ins = await projectsCol.insertOne(doc);
+    // Cast the shared collection to the DB-shaped collection for insert/read
+    const projectsColGeneric = await projectsCollection();
+    const projectsColDB = projectsColGeneric as unknown as Collection<ProjectDocDB>;
 
-    // adjust client counters
+    const ins: InsertOneResult<ProjectDocDB> = await projectsColDB.insertOne(doc);
+
+    // Update client counters (best-effort)
     await clientsCol.updateOne(
       { _id: clientId },
-      { $inc: { totalProjects: 1, totalAmount: input.amount } }
+      {
+        $inc: { totalProjects: 1, totalAmount: amount } as any,
+        $set: { updatedAt: new Date() },
+      }
     );
 
-    const created: ProjectDoc = { _id: ins.insertedId, ...doc };
-    return NextResponse.json(toProjectDTO(created, client.name), { status: 201 });
+    const created = await projectsColDB.findOne({ _id: ins.insertedId });
+    if (!created) {
+      return jsonError("Create succeeded but project not found", 500);
+    }
+
+    // Convert DB doc to DTO. We already know the client's name.
+    return NextResponse.json(
+      toProjectDTO(created as unknown as ProjectDoc, (client as any).name),
+      { status: 201 }
+    );
   } catch (err) {
+    if ((err as any)?.code === 11000) {
+      return jsonError("Project already exists (duplicate key)", 409, {
+        key: (err as any)?.keyValue,
+      });
+    }
     console.error("[POST /api/projects] Failed:", err);
     return jsonError("Failed to create project", 500);
   }

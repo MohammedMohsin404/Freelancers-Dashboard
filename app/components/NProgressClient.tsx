@@ -1,52 +1,31 @@
 // /app/components/NProgressClient.tsx
 "use client";
+
+import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import NProgress from "nprogress";
 import "nprogress/nprogress.css";
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-
-NProgress.configure({ showSpinner: false, trickleSpeed: 120 });
 
 export default function NProgressClient() {
-  const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
-    let timeout: any;
+    // Configure once
+    NProgress.configure({
+      showSpinner: false,
+      trickleSpeed: 120,
+      speed: 300,
+      minimum: 0.08,
+    });
+  }, []);
 
-    const start = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => NProgress.start(), 120);
-    };
-    const done = () => {
-      clearTimeout(timeout);
-      NProgress.done();
-    };
-
-    // Patch fetch to show on API calls (optional)
-    const _fetch = window.fetch;
-    // @ts-ignore
-    window.fetch = async (...args) => {
-      start();
-      try {
-        const res = await _fetch(...args);
-        return res;
-      } finally {
-        done();
-      }
-    };
-
-    // Router events (App Router has no direct events; this is a light heuristic)
-    start();
-    done();
-
-    return () => {
-      // cleanup fetch patch
-      // @ts-ignore
-      window.fetch = _fetch;
-      clearTimeout(timeout);
-      NProgress.remove();
-    };
-  }, [router]);
+  useEffect(() => {
+    // Pulse the bar on every pathname change
+    // (App Router doesn't expose start/complete events like pages router)
+    NProgress.start();
+    const t = setTimeout(() => NProgress.done(), 220); // quick visual cue
+    return () => clearTimeout(t);
+  }, [pathname]);
 
   return null;
 }

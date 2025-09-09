@@ -1,11 +1,10 @@
-// /app/components/ProjectsPage.tsx
 "use client";
 
 import { Dots } from "@/app/components/Loader";
 import { SkeletonCard, SkeletonTableRow } from "@/app/components/Skeleton";
 import toast from "react-hot-toast";
 import { useState, useMemo, useEffect, ChangeEvent } from "react";
-import { Plus, Edit, Trash2, X, User, Calendar, FolderOpen, DollarSign } from "lucide-react";
+import { Plus, Edit, Trash2, X, User, Calendar, FolderOpen, DollarSign, RefreshCcw } from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion, Variants } from "framer-motion";
 import { HttpError, safeFetchJSON, jsonBody } from "@/lib/http";
 
@@ -86,33 +85,28 @@ export default function ProjectsPage() {
   const reduceMotion = useReducedMotion();
 
   /* ===== Load projects + clients ===== */
-  useEffect(() => {
-    let alive = true;
+  const loadAll = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [projData, clientData] = await Promise.all([
+        safeFetchJSON<Project[]>("/api/projects"),
+        safeFetchJSON<{ id: string; name: string }[]>("/api/clients").then(arr =>
+          arr.map(c => ({ id: c.id, name: c.name }))
+        ),
+      ]);
+      setProjects(projData);
+      setClients(clientData);
+    } catch (e: any) {
+      const msg = e instanceof HttpError ? e.message : e?.message || "Failed to load";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    (async () => {
-      try {
-        setLoading(true);
-        const [projData, clientData] = await Promise.all([
-          safeFetchJSON<Project[]>("/api/projects"),
-          safeFetchJSON<{ id: string; name: string }[]>("/api/clients").then(arr =>
-            arr.map(c => ({ id: c.id, name: c.name }))
-          ),
-        ]);
-        if (!alive) return;
-        setProjects(projData);
-        setClients(clientData);
-        if (process.env.NODE_ENV === "development") toast.success("Projects loaded");
-      } catch (e: any) {
-        const msg = e instanceof HttpError ? e.message : e?.message || "Failed to load";
-        if (alive) setError(msg);
-        toast.error(msg);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-
-    return () => { alive = false; };
-  }, []);
+  useEffect(() => { loadAll(); }, []);
 
   /* ===== Derived list ===== */
   const filteredProjects = useMemo(() => {
@@ -267,45 +261,14 @@ export default function ProjectsPage() {
   /* ===== Render ===== */
   return (
     <div className="p-4 sm:p-6">
-      {/* Loading skeletons */}
-      {loading && (
-        <>
-          <ul className="grid grid-cols-1 gap-3 sm:gap-4 md:hidden">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <li key={i}>
-                <SkeletonCard />
-              </li>
-            ))}
-          </ul>
-          <div className="hidden md:block overflow-x-auto bg-base-100 shadow-md rounded-lg mt-2">
-            <table className="min-w-full divide-y divide-base-300">
-              <thead className="bg-base-200">
-                <tr>
-                  <th className="px-4 py-2 text-left">Name</th>
-                  <th className="px-4 py-2 text-left">Client</th>
-                  <th className="px-4 py-2 text-left">Status</th>
-                  <th className="px-4 py-2 text-left">Amount</th>
-                  <th className="px-4 py-2 text-left">Deadline</th>
-                  <th className="px-4 py-2 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-base-300">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <SkeletonTableRow key={i} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="mt-3">
-            <Dots label="Loading projects" />
-          </div>
-        </>
-      )}
-
       {/* Header */}
       <motion.div className="mb-3 flex items-center gap-2" variants={headerVariants} initial="hidden" animate="show">
         <FolderOpen className="size-5 text-primary" />
         <h2 className="text-base font-bold sm:text-lg md:text-xl">Projects</h2>
+        <motion.button whileTap={btnTap} className="btn btn-primary ml-2" onClick={loadAll}>
+          <RefreshCcw className="size-4" />
+          Refresh
+        </motion.button>
       </motion.div>
 
       {/* Controls */}
@@ -342,8 +305,48 @@ export default function ProjectsPage() {
       {/* Error banner */}
       {error && (
         <div className="alert alert-error mb-3">
-          <span>{error}</span>
+          <div className="flex items-center gap-2">
+            <span>{error}</span>
+            <button className="btn btn-xs" onClick={loadAll}>
+              <RefreshCcw className="size-3.5" /> Retry
+            </button>
+          </div>
         </div>
+      )}
+
+      {/* Loading skeletons */}
+      {loading && (
+        <>
+          <ul className="grid grid-cols-1 gap-3 sm:gap-4 md:hidden">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <li key={i}>
+                <SkeletonCard />
+              </li>
+            ))}
+          </ul>
+          <div className="hidden md:block overflow-x-auto bg-base-100 shadow-md rounded-lg mt-2">
+            <table className="min-w-full divide-y divide-base-300">
+              <thead className="bg-base-200">
+                <tr>
+                  <th className="px-4 py-2 text-left">Name</th>
+                  <th className="px-4 py-2 text-left">Client</th>
+                  <th className="px-4 py-2 text-left">Status</th>
+                  <th className="px-4 py-2 text-left">Amount</th>
+                  <th className="px-4 py-2 text-left">Deadline</th>
+                  <th className="px-4 py-2 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-base-300">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonTableRow key={i} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3">
+            <Dots label="Loading projects" />
+          </div>
+        </>
       )}
 
       {/* Mobile cards */}
@@ -400,7 +403,7 @@ export default function ProjectsPage() {
       )}
 
       {/* Desktop table */}
-      {!loading && (
+      {!loading && filteredProjects.length > 0 && (
         <div className="hidden md:block overflow-x-auto bg-base-100 shadow-md rounded-lg">
           <table className="min-w-full divide-y divide-base-300">
             <thead className="bg-base-200">
