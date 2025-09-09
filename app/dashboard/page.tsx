@@ -31,16 +31,16 @@ export default function Page() {
       </div>
 
       {/* Notifications + Noctie */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+      {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch"> */}
         {/* Notifications - take 2/3 on desktop */}
-        <div className="md:col-span-2 h-full">
+        {/* <div className="md:col-span-2 h-full">
           <Notifications />
-        </div>
+        </div> */}
         {/* Noctie - take 1/3 on desktop */}
-        <div className="md:col-span-1 h-full">
+        {/* <div className="md:col-span-1 h-full">
           <Noctie />
         </div>
-      </div>
+      </div> */}
     </main>
   );
 }
