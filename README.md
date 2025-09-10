@@ -1,36 +1,168 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 📊 Freelancers Dashboard
 
-## Getting Started
+A modern **Freelancer Management Dashboard** built with **Next.js 15**, **TypeScript**, **MongoDB**, and **TailwindCSS**.  
+This platform empowers freelancers to **manage projects, invoices, clients, and earnings** in a streamlined and professional way.
 
-First, run the development server:
+🌐 **Live Demo:** [freelancers-dashboard.vercel.app](https://freelancers-dashboard.vercel.app/)
 
+---
+
+## 🚀 Project Overview
+
+The **Freelancers Dashboard** is a full-stack web application designed to simplify the workflow of freelancers.  
+It provides a **centralized platform** where you can:
+
+- Track **projects** with status, deadlines, and payments
+- Manage **clients** and their associated projects
+- Generate and track **invoices** (paid & pending)
+- View **dashboard analytics** such as total projects, earnings, and invoice trends
+- Update your **profile & settings** with Google authentication
+
+The system is built for scalability with **Next.js App Router**, fully typed with **TypeScript**, and powered by a **MongoDB database**.
+
+---
+
+## 📸 Screenshots
+
+### Dashboard
+![Dashboard](./docs/screenshots/dashboard.png)
+
+### Projects
+![Projects](./docs/screenshots/projects.png)
+
+### Clients
+![Clients](./docs/screenshots/clients.png)
+
+### Settings
+![Settings](./docs/screenshots/settings.png)
+
+---
+
+## ✨ Features
+
+- 🔑 **Authentication** with NextAuth (Google OAuth)
+- 📂 **Projects Management** – add, edit, track status & deadlines
+- 👥 **Clients Management** – maintain client details and track their total projects/earnings
+- 💰 **Invoices** – generate, mark as paid/pending, and download PDF invoices
+- 📊 **Dashboard Analytics** – view earnings, invoice trends, and project stats
+- 🎨 **Responsive UI** with TailwindCSS + DaisyUI
+- ⚡ **Smooth Animations** powered by Framer Motion
+- 🗄️ **MongoDB Atlas** as backend database
+- ☁️ **Deployed on Vercel**
+
+---
+
+## 🛠️ Tech Stack
+
+- **Frontend:** Next.js 15, TypeScript, TailwindCSS, DaisyUI, Framer Motion, Recharts
+- **Backend:** Next.js API Routes, MongoDB Atlas
+- **Authentication:** NextAuth.js (Google OAuth)
+- **Database ORM:** MongoDB Driver
+- **Deployment:** Vercel
+
+---
+
+## ⚙️ Installation & Setup
+
+### 1️⃣ Clone the repo
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/MohammedMohsin404/Freelancers-Dashboard.git
+cd Freelancers-Dashboard
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2️⃣ Install dependencies
+```bash
+yarn install
+# or
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3️⃣ Setup environment variables
+Create a `.env.local` file in the root with the following:
+```env
+# MongoDB
+MONGODB_URI=your-mongodb-connection-string
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# NextAuth
+AUTH_GOOGLE_ID=your-google-client-id
+AUTH_GOOGLE_SECRET=your-google-client-secret
+NEXTAUTH_SECRET=your-secret-key
 
-## Learn More
+# App
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
 
-To learn more about Next.js, take a look at the following resources:
+### 4️⃣ Run development server
+```bash
+yarn dev
+# or
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Visit 👉 [http://localhost:3000](http://localhost:3000)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 5️⃣ Build for production
+```bash
+yarn build
+yarn start
+```
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 📡 API Endpoints
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Clients
+- `GET /api/clients` → Get all clients
+- `POST /api/clients` → Create a client
+- `PUT /api/clients/:id` → Update a client
+- `DELETE /api/clients/:id` → Delete a client
+
+### Projects
+- `GET /api/projects` → Get all projects
+- `POST /api/projects` → Create a project
+- `PUT /api/projects/:id` → Update a project
+- `DELETE /api/projects/:id` → Delete a project
+
+### Invoices
+- `GET /api/invoices` → Get all invoices
+- `POST /api/invoices` → Create an invoice
+- `PUT /api/invoices/:id` → Update invoice
+- `DELETE /api/invoices/:id` → Delete invoice
+- `GET /api/invoices/:id/pdf` → Generate invoice PDF
+
+### Stats
+- `GET /api/stats` → Fetch dashboard analytics
+
+---
+
+## 🛣️ Roadmap
+
+Planned features for future releases:
+
+- 🔄 **Recurring Invoices** – automate repeat billing
+- 💳 **Stripe Integration** – accept client payments online
+- 🔔 **Smart Notifications** – email & in-app alerts for deadlines and invoices
+- 📅 **Calendar View** – visualize deadlines and payments in a calendar UI
+- 📱 **Mobile App Support** – React Native companion app
+- 🛡️ **Role-Based Access Control (RBAC)** – invite team members with roles
+
+---
+
+## 🚀 Deployment
+
+The project is deployed on **Vercel**.  
+Simply connect your GitHub repo, add the `.env.local` variables in Vercel settings, and deploy 🚀.
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License**.
+
+---
+
+## 👨‍💻 Author
+
+**Mohammed Mohsin**  
+📧 [mohammedmohsin0725@gmail.com](mailto:mohammedmohsin0725@gmail.com)  
+🔗 [LinkedIn](https://www.linkedin.com/in/mohammedmohsin404/) | [GitHub](https://github.com/MohammedMohsin404)
