@@ -25,16 +25,24 @@ The system is built for scalability with **Next.js App Router**, fully typed wit
 ## 📸 Screenshots
 
 ### Dashboard
-![Dashboard](./docs/screenshots/dashboard.png)
+![Dashboard](./public/screenshots/dashboard.png)
 
 ### Projects
-![Projects](./docs/screenshots/projects.png)
+![Projects](./public/screenshots/projects.png)
+
+### Invoices
+![Invoices](./public/screenshots/invoices.png)
 
 ### Clients
-![Clients](./docs/screenshots/clients.png)
+![Clients](./public/screenshots/clients.png)
 
 ### Settings
-![Settings](./docs/screenshots/settings.png)
+![Settings](./public/screenshots/settings.png)
+
+### Login
+![Login](./public/screenshots/login.png)
+
+
 
 ---
 
