@@ -1,5 +1,5 @@
 // /lib/collections.ts
-import clientPromise from "./mongodb";
+import getMongoClientPromise from "./mongodb";
 import type { MongoClient, Db, Collection } from "mongodb";
 
 // If you have these types, we'll use them for strong typing.
@@ -11,7 +11,7 @@ import type { ClientDoc } from "@/types/clients";
 const DB_NAME = process.env.MONGODB_DB || "freelancers-dashboard";
 
 async function db(): Promise<Db> {
-  const client = (await clientPromise) as MongoClient;
+  const client = (await getMongoClientPromise()) as MongoClient;
   return client.db(DB_NAME);
 }
 
