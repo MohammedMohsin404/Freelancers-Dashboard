@@ -1,5 +1,5 @@
 // /lib/collections.ts
-import clientPromise from "./mongodb";
+import getMongoClientPromise from "./mongodb";
 import type { MongoClient, Db, Collection } from "mongodb";
 
 // If you have these types locally, keep them; otherwise change to <any>
@@ -10,7 +10,7 @@ const DB_NAME = process.env.MONGODB_DB || "freelancers-dashboard";
 
 /** Single source of truth to get the Db (same client everywhere) */
 export async function getDb(): Promise<Db> {
-  const client = (await clientPromise) as MongoClient;
+  const client = (await getMongoClientPromise()) as MongoClient;
   return client.db(DB_NAME);
 }
 

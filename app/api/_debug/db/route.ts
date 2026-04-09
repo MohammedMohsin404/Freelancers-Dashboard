@@ -1,10 +1,10 @@
 // /app/api/_debug/db/route.ts
 import { NextResponse } from "next/server";
-import clientPromise from "@/lib/mongodb"; // <-- this is a Promise<MongoClient>
+import getMongoClientPromise from "@/lib/mongodb";
 
 export async function GET() {
   try {
-    const client = await clientPromise; // ✅ await the promise (don't call it)
+    const client = await getMongoClientPromise();
     const ping = await client.db().admin().ping();
     return NextResponse.json({ ok: true, ping });
   } catch (e: any) {
