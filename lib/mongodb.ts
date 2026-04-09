@@ -1,28 +1,32 @@
 // /lib/mongodb.ts
 import { MongoClient } from "mongodb";
 
-const uri = process.env.MONGODB_URI!;
 const options = {};
+let clientPromise: Promise<MongoClient> | undefined;
 
-let client: MongoClient;
-let clientPromise: Promise<MongoClient>;
+export function getMongoClientPromise(): Promise<MongoClient> {
+  if (clientPromise) return clientPromise;
 
-if (!process.env.MONGODB_URI) {
-  throw new Error("Please add your Mongo URI to .env.local");
-}
-
-if (process.env.NODE_ENV === "development") {
-  // @ts-ignore
-  if (!global._mongoClientPromise) {
-    client = new MongoClient(uri, options);
-    // @ts-ignore
-    global._mongoClientPromise = client.connect();
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error("Please add your Mongo URI to .env.local");
   }
-  // @ts-ignore
-  clientPromise = global._mongoClientPromise;
-} else {
-  client = new MongoClient(uri, options);
-  clientPromise = client.connect();
+
+  if (process.env.NODE_ENV === "development") {
+    // @ts-ignore
+    if (!global._mongoClientPromise) {
+      const client = new MongoClient(uri, options);
+      // @ts-ignore
+      global._mongoClientPromise = client.connect();
+    }
+    // @ts-ignore
+    clientPromise = global._mongoClientPromise;
+  } else {
+    const client = new MongoClient(uri, options);
+    clientPromise = client.connect();
+  }
+
+  return clientPromise!;
 }
 
-export default clientPromise;
+export default getMongoClientPromise;
